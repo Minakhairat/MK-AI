@@ -29,6 +29,6 @@ json.dump({'task':'detect','classes':meta['classes'],'size':320,'score_threshold
 # refresh service worker file list
 fl=['./'+f for f in sorted(os.listdir(app)) if f!='sw.js']+['./']
 import uuid;aid=uuid.uuid4().hex[:10]
-json.dump({'name':'MK AI detector '+aid,'short_name':'MK AI '+aid[:4],'id':'mkai-det-'+aid,'start_url':'./','display':'standalone','icons':[]},open(app+'/manifest.json','w'))
+json.dump({'name':'MK AI detector '+aid,'short_name':'MK AI '+aid[:4],'id':'mkai-det-'+aid,'start_url':'./','scope':'./','display':'standalone','background_color':'#1e2127','theme_color':'#1e2127','icons':[{'src':'pwa-192x192.png','sizes':'192x192','type':'image/png'},{'src':'pwa-512x512.png','sizes':'512x512','type':'image/png'}]},open(app+'/manifest.json','w'))
 open(app+'/sw.js','w').write("const C='mkai-det-"+aid+"';const F=%s;self.addEventListener('install',e=>e.waitUntil(caches.open(C).then(c=>c.addAll(F))));self.addEventListener('fetch',e=>e.respondWith(caches.match(e.request).then(r=>r||fetch(e.request))));"%json.dumps(fl))
 shutil.make_archive(out+'/app','zip',app);print('PROGRESS done',flush=True)
