@@ -80,6 +80,7 @@ if (-not (Test-Path "$py\python.exe")) {
   Remove-Item $whl
 }
 $env:PYTHONNOUSERSITE = '1'
+if ($env:MKAI_SMOKE -eq '1') { & "$py\python.exe" -m pip --version; if ($LASTEXITCODE -ne 0) { throw 'pip not usable' }; Say 'SMOKE OK (python + pip only; PyTorch and model downloads skipped)'; exit 0 }
 # 3) Libraries from PyTorch.org and PyPI (versions pinned in constraints.txt, the set proven by our Windows CI)
 if ($needPy) {
   Say 'Downloading PyTorch (CPU) and libraries. This takes a while, once.'
