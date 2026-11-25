@@ -46,3 +46,35 @@ jobs:
           out.close()
           PYEOF
           wc -c "$GITHUB_STEP_SUMMARY"
+      - name: Targeted reads of the exact terms (open items)
+        run: |
+          python - <<'PYEOF'
+          import zipfile,glob,re,os,urllib.request,io
+          out=open(os.environ['GITHUB_STEP_SUMMARY'],'a')
+          def ctx(title,text,pat,before=3,after=12,maxhits=4):
+              L=text.split('\n');hits=[i for i,l in enumerate(L) if re.search(pat,l,re.I)]
+              out.write('\n#### %s: %d hits for %s\n'%(title,len(hits),pat))
+              last=-99;n=0
+              for i in hits:
+                  if i<last or n>=maxhits: continue
+                  out.write('\n'.join('  '+x.strip()[:200] for x in L[max(0,i-before):i+after])+'\n  ---\n');last=i+after;n+=1
+          out.write('\n\n# TARGETED READS\n')
+          for w in sorted(glob.glob('w/*.whl')):
+              z=zipfile.ZipFile(w);b=os.path.basename(w)
+              dl=[n for n in z.namelist() if re.search(r'msvcp|vcruntime|libiomp|concrt|vcomp',n,re.I)]
+              if dl: out.write('\n## %s contains: %s\n'%(b,dl))
+              for n in z.namelist():
+                  if re.search(r'(LICEN[CS]E|NOTICE|THIRD)[^/]*$',n,re.I) and not n.endswith('/'):
+                      t=z.read(n).decode('utf-8','ignore')
+                      if re.search(r'msvcp|vcruntime|libiomp|Intel.*OpenMP|OpenMP.*Intel',t,re.I):
+                          ctx(b+'::'+n,t,r'msvcp|vcruntime|libiomp|Intel.*OpenMP|OpenMP.*Intel',3,25,3)
+          # Python embeddable
+          url='https://www.python.org/ftp/python/3.12.10/python-3.12.10-embed-amd64.zip'
+          data=urllib.request.urlopen(url,timeout=120).read()
+          z=zipfile.ZipFile(io.BytesIO(data))
+          out.write('\n## python embed zip %d bytes, files: %s\n'%(len(data),sorted(z.namelist())))
+          t=z.read('LICENSE.txt').decode('utf-8','ignore')
+          out.write('LICENSE.txt lines: %d\n'%len(t.split('\n')))
+          ctx('python LICENSE.txt',t,r'Microsoft|vcruntime|redistribut',2,10,6)
+          out.close()
+          PYEOF
