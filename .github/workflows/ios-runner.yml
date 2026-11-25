@@ -41,10 +41,10 @@ jobs:
         run: |
           cd wrap/ios/App
           xcodebuild -version | tee -a "$GITHUB_STEP_SUMMARY"
-          xcodebuild -project App.xcodeproj -scheme App -configuration Debug -sdk iphonesimulator -derivedDataPath ../build-sim CODE_SIGNING_ALLOWED=NO build | tail -5
-          xcodebuild -project App.xcodeproj -scheme App -configuration Release -sdk iphoneos -derivedDataPath ../build-dev CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO build | tail -5
-          ls ../build-dev/Build/Products/Release-iphoneos/ | tee -a "$GITHUB_STEP_SUMMARY"
-          codesign -dv ../build-dev/Build/Products/Release-iphoneos/App.app 2>&1 | tee -a "$GITHUB_STEP_SUMMARY" || true
+          xcodebuild -project App.xcodeproj -scheme App -configuration Debug -sdk iphonesimulator -derivedDataPath ../build-sim CODE_SIGNING_ALLOWED=NO build | tail -3 | tee -a "$GITHUB_STEP_SUMMARY"
+          xcodebuild -project App.xcodeproj -scheme App -configuration Release -sdk iphoneos -derivedDataPath ../build-dev CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO build | tail -3 | tee -a "$GITHUB_STEP_SUMMARY"
+          A=../build-dev/Build/Products/Release-iphoneos/App.app
+          { echo '--- unsigned device build evidence'; ls -la $A | head -12; file $A/App; lipo -info $A/App; plutil -p $A/Info.plist | grep -E 'CFBundleIdentifier|CFBundleName|NSCamera|MinimumOSVersion|DTPlatformName'; codesign -dv $A 2>&1 | head -3; ls $A/_CodeSignature 2>&1 | head -2; } 2>&1 | tee -a "$GITHUB_STEP_SUMMARY"
       - name: Run in the iOS Simulator and screenshot
         run: |
           set +e
@@ -55,7 +55,8 @@ jobs:
           xcrun simctl launch $DEV com.mkai.runner
           sleep 45
           xcrun simctl io $DEV screenshot ios-shot.png
-          { echo "<details><summary>ios-shot.png base64</summary><pre>"; base64 -i ios-shot.png; echo "</pre></details>"; } >> "$GITHUB_STEP_SUMMARY"
+          sips -Z 360 -s format jpeg -s formatOptions 55 ios-shot.png --out ios-small.jpg >/dev/null
+          { echo "<details><summary>ios-small.jpg base64</summary><pre>"; base64 -i ios-small.jpg; echo "</pre></details>"; } >> "$GITHUB_STEP_SUMMARY"
           ls -la ios-shot.png
       - uses: actions/upload-artifact@v4
         if: always()
