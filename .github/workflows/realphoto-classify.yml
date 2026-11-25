@@ -1,0 +1,33 @@
+name: realphoto-classify
+on:
+  workflow_dispatch:
+  push:
+    paths: ['oxford.version']
+concurrency:
+  group: realphoto-classify
+  cancel-in-progress: true
+jobs:
+  train:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.10' }
+      - name: Install
+        run: |
+          pip install onnxruntime numpy pillow pyarrow huggingface_hub
+          npm install && npm run setup
+      - name: Oxford-IIIT Pet, real photos, downloaded in CI only (CC BY-SA 4.0). Train head, held-out evaluation
+        run: mkdir -p build/ox; python trainer/oxford_classify.py 2>&1 | tee build/ox/eval.txt
+      - name: Same held-out photos through the trusted runner in headless Chrome
+        run: |
+          mkdir -p build/runner-www && cp android-runner/www/* build/runner-www/ && cp studio/jszip.min.js studio/ort.min.js studio/ort-wasm-simd-threaded*.mjs studio/ort-wasm-simd-threaded*.wasm build/runner-www/
+          mkdir -p build/pt && cd build/pt && npm init -y >/dev/null && npm i puppeteer-core >/dev/null && cd ../..
+          cp android-runner/parity_classify.mjs build/pt/ && (cd build/pt && node parity_classify.mjs ../runner-www ../ox/export.zip ../ox/test)
+      - name: Summary
+        if: always()
+        run: |
+          { echo '### Oxford-IIIT Pet classifier, held-out test split (software benchmark, CC BY-SA 4.0 data, nothing published)'; echo '```'; cat build/ox/eval.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
