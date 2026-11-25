@@ -15,7 +15,7 @@ One page, five steps: project type, data (class cards, or box labeling on a canv
 - Not tested: real phones/tablets (Android, iPhone), iOS offline storage limits, camera capture, large photo sets, real labeled data quality, GPU training, a one-click Windows installer.
 
 ## Run it on Windows
-Needs Python 3.10+ and Node.js 22+. Double-click `start-windows.bat`: it creates a virtual environment, installs CPU PyTorch and the Python packages, runs `npm install` and `npm run setup`, starts the local server on 127.0.0.1:8000 and opens the page. First run downloads several hundred MB. This launcher has not been run on a real Windows desktop yet.
+Needs Python 3.10, 3.11 or 3.12 (the launcher refuses other versions; PyTorch 2.6 CPU wheels exist for Windows up to 3.13, but 3.13 is untested here; CI runs 3.10 and 3.12 on a Windows runner and 3.11 is not run) and Node.js 22+. Double-click `start-windows.bat`: it creates a virtual environment, installs CPU PyTorch and the Python packages, runs `npm install` and `npm run setup`, starts the local server on 127.0.0.1:8000 and opens the page. First run downloads PyTorch (CPU build), Python and npm packages and a pretrained model; it is a large download and asks before it starts. This launcher has not been run on a real Windows desktop yet.
 
 ## Run it anywhere else
 ```
@@ -41,3 +41,5 @@ An exported classifier zip must be served from a web server (do not open the fil
 
 ## Hosted page
 https://minakhairat.github.io/MK-AI/ is built by `.github/workflows/pages.yml` when `site.version` changes. It serves the classify flow. The detect flow shows that the local trainer is not running and disables training.
+- Exported zips include `NOTICE-MODEL.txt`, `LICENSE-APACHE-2.0.txt`, `THIRD-PARTY-NOTICES.txt`, and the upstream ONNX Runtime `ORT-LICENSE-MIT.txt` and `ORT-THIRD-PARTY-NOTICES.txt` (v1.31.1, fetched at setup and hash-checked). Which third-party components are compiled into the ONNX Runtime wasm files was not verified, and none of this is legal clearance.
+- Offline detector app: it reads `detector.onnx` straight from the offline cache. Streaming the 80 MB model through the service worker crashed Chrome (headless, Linux) during inference.
