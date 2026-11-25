@@ -40,15 +40,16 @@ async function importZip(file){
  for(const [k,v] of Object.entries(rec.blobs))await c.put('/data/'+id+'/'+k,new Response(v));
  const a=models();a.push({id,name:file.name.replace(/[^\w.\- ]/g,'').slice(0,60)||'model',type:rec.type,meta:rec.meta,at:new Date().toISOString()});saveModels(a);
  console.log('MKAI_RUNNER_IMPORTED type='+rec.type+' classes='+rec.meta.classes.length);return id;}
-async function removeModel(id){const c=await caches.open(CAP);for(const r of await c.keys())if(new URL(r.url).pathname.startsWith('/data/'+id+'/'))await c.delete(r);saveModels(models().filter(x=>x.id!==id));render();}
+async function removeModel(id){if(cur&&cur.m.id===id){stopCam();gen++;cur=null;clearView();$('run').hidden=true;$('home').hidden=false;}const c=await caches.open(CAP);for(const r of await c.keys())if(new URL(r.url).pathname.startsWith('/data/'+id+'/'))await c.delete(r);saveModels(models().filter(x=>x.id!==id));render();}
 function render(){const l=$('list');l.textContent='';for(const a of models().slice().reverse()){const d=document.createElement('div');d.className='card';const t=document.createElement('div');t.textContent=a.name+' ('+(a.type==='detect'?'تحديد وعدّ':'تصنيف')+', '+a.meta.classes.length+' فئة)';
  const o=document.createElement('button');o.textContent='فتح';o.onclick=()=>openModel(a.id);const r=document.createElement('button');r.className='sec';r.textContent='حذف';r.onclick=()=>removeModel(a.id);d.append(t,o,r);l.append(d);}}
 // ---- running a stored model (trusted code, same math as the exported apps) ----
 ort.env.wasm.numThreads=1;ort.env.wasm.proxy=false;ort.env.wasm.wasmPaths='./';
-let cur=null,stream=null,live=false;
+let cur=null,stream=null,live=false,gen=0,loopId=0;
+function clearView(){const c=$('c');c.width=c.height=0;c.style.display='none';$('res').textContent='';$('camn').textContent='';window.lastPred=undefined;window.lastDet=undefined;}
 const blobOf=async(id,n)=>new Uint8Array(await(await(await caches.open(CAP)).match('/data/'+id+'/'+n)).arrayBuffer());
-async function openModel(id){const m=models().find(x=>x.id===id);if(!m)return;stopCam();$('home').hidden=true;$('run').hidden=false;$('title').textContent=m.name;$('rst').textContent='جاري تحميل النموذج…';$('res').textContent='';cur=null;
- try{const S=await ort.InferenceSession.create(await blobOf(id,m.type==='detect'?'detector.onnx':'feat.onnx'),{executionProviders:['wasm']});cur={m,S};$('rst').textContent='جاهز (على الجهاز بدون إنترنت)';window.ready=true;}catch(e){$('rst').textContent='تعذّر تحميل النموذج.';console.log('MKAI_NATIVE_FAIL load '+e);}}
+async function openModel(id){const m=models().find(x=>x.id===id);if(!m)return;const my=++gen;stopCam();clearView();$('home').hidden=true;$('run').hidden=false;$('title').textContent=m.name;$('rst').textContent='جاري تحميل النموذج…';cur=null;window.ready=false;
+ try{const S=await ort.InferenceSession.create(await blobOf(id,m.type==='detect'?'detector.onnx':'feat.onnx'),{executionProviders:['wasm']});if(my!==gen)return;cur={m,S};$('rst').textContent='جاهز (على الجهاز بدون إنترنت)';window.ready=true;}catch(e){if(my!==gen)return;$('rst').textContent='تعذّر تحميل النموذج.';console.log('MKAI_NATIVE_FAIL load '+e);}}
 const MEAN=[0.485,0.456,0.406],STD=[0.229,0.224,0.225];
 async function classify(el){const{m,S}=cur,H=m.meta,z=224,t=document.createElement('canvas');t.width=t.height=z;const g=t.getContext('2d');g.drawImage(el,0,0,z,z);const d=g.getImageData(0,0,z,z).data,n=z*z,x=new Float32Array(3*n);
  for(let i=0;i<n;i++)for(let c=0;c<3;c++)x[c*n+i]=(d[i*4+c]/255-MEAN[c])/STD[c];
@@ -61,19 +62,19 @@ async function detect(im){const{m,S}=cur,M=m.meta,z=M.size,t=document.createElem
  for(let i=0;i<Math.min(o.scores.data.length,1000,o.boxes.data.length/4);i++)if(o.scores.data[i]>=M.score_threshold){const b=Array.from(o.boxes.data.slice(i*4,i*4+4));res.push({score:o.scores.data[i],cls:Number(o.labels.data[i]),box:[b[0]*W/z,b[1]*Hh/z,b[2]*W/z,b[3]*Hh/z]});}
  return res;}
 const cols=['#e00','#07f','#0a0','#e90'];
-async function infer(el){const c=$('c'),M=cur.m.meta;
- if(cur.m.type==='classify'){const p=await classify(el);$('res').textContent=M.classes.map((n,i)=>n+': '+(p[i]*100).toFixed(1)+'%').join('\n');window.lastPred=p;return p;}
- const w=el.naturalWidth||el.videoWidth,h=el.naturalHeight||el.videoHeight;c.width=w;c.height=h;const g=c.getContext('2d');g.drawImage(el,0,0);const r=await detect(el);g.lineWidth=Math.max(2,w/160);g.font=Math.max(14,w/22)+'px sans-serif';g.direction='ltr';g.textAlign='left';const cnt={};
+async function infer(el){const my=gen,run=cur;if(!run)return;const c=$('c'),M=run.m.meta;
+ if(run.m.type==='classify'){const p=await classify(el);if(my!==gen||cur!==run)return;c.style.display='none';$('res').textContent=M.classes.map((n,i)=>n+': '+(p[i]*100).toFixed(1)+'%').join('\n');window.lastPred=p;return p;}
+ const w=el.naturalWidth||el.videoWidth,h=el.naturalHeight||el.videoHeight;c.width=w;c.height=h;const g=c.getContext('2d');g.drawImage(el,0,0);const r=await detect(el);if(my!==gen||cur!==run)return;c.style.display='block';g.lineWidth=Math.max(2,w/160);g.font=Math.max(14,w/22)+'px sans-serif';g.direction='ltr';g.textAlign='left';const cnt={};
  r.forEach(x=>{if(x.cls<0||x.cls>=M.classes.length)return;cnt[x.cls]=(cnt[x.cls]||0)+1;g.strokeStyle=cols[x.cls%4];g.fillStyle=cols[x.cls%4];g.strokeRect(x.box[0],x.box[1],x.box[2]-x.box[0],x.box[3]-x.box[1]);g.fillText(M.classes[x.cls]+' '+Math.round(x.score*100)+'%',x.box[0]+3,x.box[1]+16);});
  $('res').textContent=M.classes.map((n,i)=>n+': '+(cnt[i]||0)).join('\n');window.lastDet=r;return r;}
-function stopCam(){live=false;if(stream)stream.getTracks().forEach(t=>t.stop());stream=null;$('v').style.display='none';$('camb').textContent='تشغيل الكاميرا مباشر';}
+function stopCam(){live=false;loopId++;if(stream)stream.getTracks().forEach(t=>t.stop());stream=null;$('v').style.display='none';$('camb').textContent='تشغيل الكاميرا مباشر';}
 $('camb').onclick=async()=>{if(stream){stopCam();return;}const n=$('camn'),v=$('v');
  if(!window.isSecureContext||!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){n.textContent='الكاميرا مش متاحة هنا.';return;}
- try{n.textContent='';stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'}},audio:false});}catch(e){stream=null;n.textContent='تعذّر تشغيل الكاميرا: '+(e&&e.name?e.name:e);return;}
- v.srcObject=stream;await v.play();v.style.display='block';if(cur.m.type==='detect'){v.style.height='0';v.style.opacity=0;}$('camb').textContent='إيقاف الكاميرا';live=true;
- while(live){if(v.videoWidth&&cur)await infer(v);await new Promise(r=>setTimeout(r,50));}};
+ const g1=gen;try{n.textContent='';const st=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'}},audio:false});if(g1!==gen||!cur){st.getTracks().forEach(t=>t.stop());return;}stream=st;}catch(e){stream=null;n.textContent='تعذّر تشغيل الكاميرا: '+(e&&e.name?e.name:e);return;}
+ v.srcObject=stream;await v.play();v.style.display='block';if(cur.m.type==='detect'){v.style.height='0';v.style.opacity=0;}$('camb').textContent='إيقاف الكاميرا';live=true;const lp=++loopId,g0=gen;
+ while(live&&lp===loopId&&g0===gen){if(v.videoWidth&&cur)await infer(v);await new Promise(r=>setTimeout(r,50));}};
 $('img').onchange=()=>{const f=$('img').files[0];if(!f||!cur)return;const im=new Image();im.onload=()=>infer(im);im.src=URL.createObjectURL(f);};
-$('back').onclick=()=>{stopCam();cur=null;$('run').hidden=true;$('home').hidden=false;render();};
+$('back').onclick=()=>{stopCam();gen++;cur=null;clearView();$('run').hidden=true;$('home').hidden=false;render();};
 $('f').onchange=async e=>{const f=e.target.files[0];e.target.value='';if(!f)return;$('st').textContent='جاري الاستيراد…';try{const id=await importZip(f);$('st').textContent='تم.';render();await openModel(id);}catch(err){$('st').textContent='فشل الاستيراد: الملف مش تصدير سليم من MK AI.';$('log').textContent=String(err.message||err).slice(0,200);console.log('MKAI_IMPORT_REJECTED '+String(err.message||err).slice(0,120));}};
 render();
 window.MKAI_API={importZip,openModel,removeModel,infer,models,get cur(){return cur;}};
