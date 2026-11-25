@@ -1,0 +1,42 @@
+name: windows-bootstrap-smoke
+on:
+  workflow_dispatch:
+  push:
+    paths: ['windows-bootstrap-smoke.version']
+permissions:
+  contents: read
+jobs:
+  smoke:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Parse setup.ps1 with Windows PowerShell 5.1 and check every command exists there
+        shell: powershell
+        run: |
+          $PSVersionTable.PSVersion.ToString()
+          $f = (Resolve-Path windows-bootstrap\setup.ps1).Path
+          $errs = $null; $tok = $null
+          $ast = [System.Management.Automation.Language.Parser]::ParseFile($f, [ref]$tok, [ref]$errs)
+          if ($errs.Count) { $errs | ForEach-Object { Write-Host "PARSE ERROR: $($_.Message) line $($_.Extent.StartLineNumber)" }; exit 1 }
+          $cmds = $ast.FindAll({ param($n) $n -is [System.Management.Automation.Language.CommandAst] }, $true) | ForEach-Object { $_.GetCommandName() } | Where-Object { $_ } | Sort-Object -Unique
+          $missing = @(); foreach ($c in $cmds) { if (-not (Get-Command $c -ErrorAction SilentlyContinue)) { $missing += $c } }
+          Write-Host ("commands used: " + ($cmds -join ', '))
+          # user-defined functions are fine
+          $defs = $ast.FindAll({ param($n) $n -is [System.Management.Automation.Language.FunctionDefinitionAst] }, $true) | ForEach-Object { $_.Name }
+          $missing = $missing | Where-Object { $defs -notcontains $_ }
+          if ($missing) { Write-Host "MISSING IN 5.1: $($missing -join ', ')"; exit 1 }
+          Write-Host 'PARSE OK, all commands exist in Windows PowerShell 5.1'
+      - name: Run the real setup.ps1 (python + pip part only) under Windows PowerShell 5.1 in a fresh folder, PATH limited to System32
+        shell: pwsh
+        run: |
+          Remove-Item Env:PSModulePath -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory C:\smoke\MK-AI\windows-bootstrap -Force | Out-Null
+          Copy-Item windows-bootstrap\setup.ps1 C:\smoke\MK-AI\windows-bootstrap\
+          $env:MKAI_NONINTERACTIVE = '1'; $env:MKAI_ASSUME_YES = '1'; $env:MKAI_SMOKE = '1'
+          $sys = "$env:SystemRoot\System32"
+          $out = cmd /c "set PATH=$sys&& cd /d C:\smoke\MK-AI && $sys\WindowsPowerShell\v1.0\powershell.exe -NoProfile -ExecutionPolicy Bypass -File windows-bootstrap\setup.ps1" 2>&1
+          $code = $LASTEXITCODE
+          $out | Out-Host
+          Write-Host "exit code $code"
+          if ($code -ne 0 -or ($out -join ' ') -notmatch 'SMOKE OK') { throw 'smoke failed' }
