@@ -4,5 +4,5 @@ Model card license: Apache-2.0 (https://www.apache.org/licenses/LICENSE-2.0). Co
 Model card says the checkpoint was trained on COCO 2017 object detection (https://cocodataset.org). Credits: Yian Zhao, Sangbum Choi and the RT-DETR authors; loaded through Hugging Face transformers (Apache-2.0).
 Modified by MK AI: the detection head was re-initialised for your classes and fine-tuned on your images (the backbone stays frozen), then exported to ONNX as detector.onnx.
 Effect of the COCO dataset terms on the weights is an open uncertainty, not assessed here.
-Runtime: onnxruntime-web (ort.min.js and ort-wasm-*), license field in its package.json: MIT.
+Runtime: onnxruntime-web, see THIRD-PARTY-NOTICES.txt.
 LICENSE-APACHE-2.0.txt in this folder is the Apache License 2.0 text.
