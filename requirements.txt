@@ -1,0 +1,9 @@
+# Install torch/torchvision CPU first:  pip install torch==2.6.0 torchvision==0.21.0 --index-url https://download.pytorch.org/whl/cpu
+transformers
+timm
+scipy
+pillow
+numpy
+onnx
+onnxscript
+onnxruntime
