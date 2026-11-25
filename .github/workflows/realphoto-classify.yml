@@ -27,7 +27,7 @@ jobs:
         run: |
           mkdir -p build/runner-www && cp android-runner/www/* build/runner-www/ && cp studio/jszip.min.js studio/ort.min.js studio/ort-wasm-simd-threaded*.mjs studio/ort-wasm-simd-threaded*.wasm build/runner-www/
           mkdir -p build/pt && cd build/pt && npm init -y >/dev/null && npm i puppeteer-core >/dev/null && cd ../..
-          cp android-runner/parity_classify.mjs build/pt/ && (cd build/pt && node parity_classify.mjs ../runner-www ../ox/export.zip ../ox/test)
+          cp android-runner/parity_classify.mjs android-runner/parity_diag.mjs build/pt/ && (cd build/pt && python ../../trainer/pil_pixels.py ../ox/test 224 ../ox/pil224.bin; node parity_classify.mjs ../runner-www ../ox/export.zip ../ox/test ../ox/pil224.bin)
       - name: Summary
         if: always()
         run: |
