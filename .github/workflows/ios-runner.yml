@@ -70,14 +70,15 @@ jobs:
           cd wrap/ios
           [ "$(cat sim.rc)" = 0 ] && [ "$(cat dev.rc)" = 0 ] && test -f build-sim/Build/Products/Debug-iphonesimulator/App.app/App && test -f build-dev/Build/Products/Release-iphoneos/App.app/App || { echo "iOS build failed or no executable: sim.rc=$(cat sim.rc) dev.rc=$(cat dev.rc)" | tee -a "$GITHUB_STEP_SUMMARY"; exit 1; }
       - name: Run in the iOS Simulator, screenshot, RELAUNCH, screenshot again
+        timeout-minutes: 20
         run: |
           set +e
           S="$GITHUB_STEP_SUMMARY"
           DEV=$(xcrun simctl list devices available | grep -m1 -E 'iPhone' | grep -oE '[0-9A-F-]{36}')
           echo "simulator $DEV" | tee -a "$S"
-          xcrun simctl boot $DEV; xcrun simctl bootstatus $DEV -b
+          xcrun simctl boot $DEV; perl -e 'alarm 240; exec @ARGV' xcrun simctl bootstatus $DEV -b; echo "bootstatus exit=$?" | tee -a "$S"
           APP=$(find wrap/ios/build-sim -name 'App.app' -maxdepth 6 | head -1); echo "installing $APP" | tee -a "$S"
-          xcrun simctl install $DEV "$APP"; echo "install exit=$?" | tee -a "$S"
+          for t in 1 2; do perl -e 'alarm 240; exec @ARGV' xcrun simctl install $DEV "$APP"; r=$?; echo "install try$t exit=$r" | tee -a "$S"; [ $r = 0 ] && break; done; echo "install exit=$r" | tee -a "$S"
           xcrun simctl launch $DEV com.mkai.runner 2>&1 | tee -a "$S"
           sleep 150
           xcrun simctl spawn $DEV launchctl list 2>&1 | grep -i mkai | tee -a "$S"
