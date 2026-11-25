@@ -9,7 +9,7 @@ export async function diag(pg,fs,td,bin,z,T,kind){
       const MEAN=[0.485,0.456,0.406],STD=[0.229,0.224,0.225];
       for(let k=0;k<N;k++)for(let ch=0;ch<3;ch++){const v=p[k*3+ch]/255;x[ch*N+k]=kind==='classify'?(v-MEAN[ch])/STD[ch]:v;}
       const o=await S.run({image:new ort.Tensor('float32',x,[1,3,z,z])});
-      if(kind==='classify'){const f=o.feat.data;let nr=0;for(const v of f)nr+=v*v;nr=Math.sqrt(nr)||1;const K=M.classes.length,l=new Float32Array(K);for(let k=0;k<K;k++){let t=M.b[k];for(let j=0;j<M.D;j++)t+=f[j]/nr*M.W[j*K+k];l[k]=t;}return {mean:s/(z*z*3),max:mx,logits:Array.from(l)};}
+      if(kind==='classify'){const f=o.feat.data;let nr=0;for(const v of f)nr+=v*v;nr=Math.sqrt(nr)||1;const K=M.classes.length,l=new Float32Array(K);for(let k=0;k<K;k++){let t=M.b[k];for(let j=0;j<M.D;j++)t+=f[j]/nr*M.W[j*K+k];l[k]=t;}return {mean:s/(z*z*3),max:mx,logits:Array.from(l),feat:Array.from(f,v=>v/nr)};}
       const res=[];for(let k=0;k<o.scores.data.length;k++)if(o.scores.data[k]>=M.score_threshold){const b=Array.from(o.boxes.data.slice(k*4,k*4+4));res.push({score:o.scores.data[k],cls:Number(o.labels.data[k]),box:b});}
       return {mean:s/(z*z*3),max:mx,dets:res};},jpg,pil,z,kind);
     stats.meanAbs.push(r.mean);stats.maxAbs=Math.max(stats.maxAbs,r.max);out.push(r);}
