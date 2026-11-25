@@ -76,6 +76,7 @@ jobs:
           7z x -y -oC:\clean MK-AI-Windows-starter.zip | Out-Null
           $root = 'C:\clean\MK-AI'
           $sys = "$env:SystemRoot\System32"
+          Remove-Item Env:PSModulePath -ErrorAction SilentlyContinue  # the CI shell is PowerShell 7; a user's Windows PowerShell 5.1 has its own module path
           # missing-runtime branch (forced; CI cannot uninstall the runtime): must stop with code 2 and print the Microsoft URL
           $env:MKAI_FORCE_NO_VCRT = '1'; $env:MKAI_NONINTERACTIVE = '1'; $env:MKAI_ASSUME_YES = '1'; $env:MKAI_NOBROWSER = '1'
           $neg = cmd /c "set PATH=$sys&& cd /d $root && MK-AI.bat" 2>&1
