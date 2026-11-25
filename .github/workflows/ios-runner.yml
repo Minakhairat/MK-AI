@@ -36,9 +36,10 @@ jobs:
           const of=window.fetch;window.fetch=function(u){const s=String(u);if(/test-(classify|detect)\.zip$/.test(s))return new Promise((res,rej)=>{const x=new XMLHttpRequest();x.open('GET',s);x.responseType='blob';x.onload=()=>res({blob:()=>Promise.resolve(x.response)});x.onerror=()=>rej(new Error('xhr fail'));x.send();});return of.apply(this,arguments);};
           console.log('MKAI_PROBE origin='+location.origin+' secure='+window.isSecureContext+' caches='+(typeof caches)+' wasm='+(typeof WebAssembly)+' getUserMedia='+!!(navigator.mediaDevices&&navigator.mediaDevices.getUserMedia));
           JS
-          # iOS-only safe-area patch (the shared runner source is NOT changed here)
+          # iOS-only files (the shared runner source and the Android APK are NOT changed)
+          cp ../android-runner/ios/ios-compat.js www/
           echo "body{padding-top:env(safe-area-inset-top);padding-bottom:env(safe-area-inset-bottom)}" > www/ios-safe.css
-          sed -i '' 's#width=device-width,initial-scale=1#width=device-width,initial-scale=1,viewport-fit=cover#; s#<link rel="stylesheet" href="runner.css">#<link rel="stylesheet" href="runner.css"><link rel="stylesheet" href="ios-safe.css">#; s#<script src="runner.js">#<script src="ci-out.js"></script><script src="test-config.js"></script><script src="runner.js">#' www/index.html
+          sed -i '' 's#width=device-width,initial-scale=1#width=device-width,initial-scale=1,viewport-fit=cover#; s#<link rel="stylesheet" href="runner.css">#<link rel="stylesheet" href="runner.css"><link rel="stylesheet" href="ios-safe.css">#; s#<script src="runner.js">#<script src="ci-out.js"></script><script src="ios-compat.js"></script><script src="test-config.js"></script><script src="runner.js">#' www/index.html
           grep -c "ios-safe.css" www/index.html; grep -c "viewport-fit=cover" www/index.html
           npm init -y >/dev/null
           npm i @capacitor/core@7 @capacitor/cli@7 @capacitor/ios@7
