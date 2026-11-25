@@ -87,7 +87,11 @@ jobs:
           Remove-Item Env:MKAI_FORCE_NO_VCRT
           # first run: the launcher itself performs the whole download, then starts the server
           $sw = [Diagnostics.Stopwatch]::StartNew()
-          $p = Start-Process cmd -ArgumentList '/c', "set PATH=$sys&& cd /d $root && MK-AI.bat > C:\clean\launcher.log 2>&1" -PassThru -WindowStyle Hidden
+          $psi = New-Object System.Diagnostics.ProcessStartInfo 'cmd.exe'
+          $psi.Arguments = "/c set PATH=$sys&& cd /d $root && MK-AI.bat > C:\clean\launcher.log 2>&1"
+          $psi.UseShellExecute = $false; $psi.CreateNoWindow = $true
+          [void]$psi.Environment.Remove('PSModulePath')  # a user's Windows PowerShell 5.1 has its own module path (the CI shell is PowerShell 7)
+          $p = [System.Diagnostics.Process]::Start($psi)
           $ok = $false
           for ($i = 0; $i -lt 300; $i++) {
             Start-Sleep 6
