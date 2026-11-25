@@ -1,38 +1,123 @@
-<!doctype html><html dir="rtl" lang="ar"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>MK AI Studio (prototype)</title>
-<style>body{font-family:sans-serif;max-width:480px;margin:auto;padding:12px;overflow-wrap:anywhere}pre{white-space:pre-wrap}button,input{font-size:16px;margin:2px}input.nm{width:7em}</style><body>
-<h3>MK AI Studio – نموذج تجريبي (تصنيف فقط)</h3>
-<p id="st">جاري تحميل النموذج الأساسي…</p>
-<div id="classes"></div>
-<button id="add">+ فئة</button> <button id="train" disabled>درّب</button> <button id="export" disabled>صدّر التطبيق (zip)</button>
-<pre id="log"></pre>
-<script src="tf.min.js"></script><script src="jszip.min.js"></script>
+<!doctype html><html dir="rtl" lang="ar"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>MK AI Studio</title>
+<style>
+:root{--bg:#0f1420;--panel:#171e2e;--card:#1e2740;--line:#2c3856;--tx:#e8ecf6;--mu:#97a3c0;--ac:#4f8cff;--ok:#3ecf8e;--wa:#f5b942;--er:#ff6b6b}
+*{box-sizing:border-box;min-width:0}html{overflow-x:hidden}body{overflow-wrap:anywhere;margin:0;background:var(--bg);color:var(--tx);font:15px/1.5 system-ui,"Segoe UI",Tahoma,sans-serif}
+header{display:flex;align-items:center;gap:12px;padding:12px 18px;background:var(--panel);border-bottom:1px solid var(--line);position:sticky;top:0;z-index:5}
+header b{font-size:18px}.tag{font-size:12px;padding:2px 8px;border-radius:99px;background:#33405f;color:var(--wa)}
+nav{display:flex;flex-wrap:wrap;gap:6px;padding:10px 18px;background:var(--panel);border-bottom:1px solid var(--line)}
+nav button{background:transparent;border:1px solid var(--line);color:var(--mu);padding:6px 11px;border-radius:99px;font:inherit;cursor:pointer}
+nav button.on{background:var(--ac);border-color:var(--ac);color:#fff}nav button.done::after{content:" ✓";color:var(--ok)}
+main{width:100%;max-width:1100px;margin:auto;padding:16px 18px 60px}
+h2{margin:6px 0 4px;font-size:20px}p.sub{color:var(--mu);margin:0 0 14px}
+.grid{display:grid;gap:12px}.g2{grid-template-columns:repeat(auto-fit,minmax(260px,1fr))}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px}
+.pick{cursor:pointer;transition:.15s;border-width:2px}.pick:hover{border-color:var(--ac)}.pick.on{border-color:var(--ac);background:#22305a}
+.pick h3{margin:4px 0}.pick small{color:var(--mu)}
+.btn{background:var(--ac);color:#fff;border:0;border-radius:10px;padding:10px 16px;font:inherit;cursor:pointer}.btn.sec{background:#2b3757}.btn:disabled{opacity:.4;cursor:not-allowed}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+input[type=text]{background:#111827;border:1px solid var(--line);color:var(--tx);border-radius:8px;padding:8px 10px;font:inherit;min-width:0}
+.thumbs{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}.thumbs img{width:64px;height:64px;object-fit:cover;border-radius:8px;border:1px solid var(--line)}
+.count{color:var(--mu);font-size:13px}
+.bar{height:14px;background:#111827;border-radius:99px;overflow:hidden;border:1px solid var(--line)}.bar>i{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--ac),var(--ok));transition:width .2s}
+canvas{max-width:100%;border-radius:10px;background:#000}
+.chips{display:flex;gap:6px;flex-wrap:wrap}.chip{padding:5px 12px;border-radius:99px;border:2px solid;cursor:pointer;font-size:14px;background:transparent;color:var(--tx)}.chip.on{color:#fff}
+.strip{display:flex;gap:6px;overflow-x:auto;margin-top:8px}.strip img{width:56px;height:56px;object-fit:cover;border-radius:6px;border:2px solid transparent;cursor:pointer;flex:none}.strip img.on{border-color:var(--ac)}
+.res{display:flex;align-items:center;gap:8px;margin:5px 0}.res span.n{width:90px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.res .bar{flex:1}.res span.p{width:52px;text-align:left;direction:ltr}
+.note{border-inline-start:4px solid var(--wa);background:#2a2a1f;padding:8px 12px;border-radius:8px;color:#f0dca4;font-size:14px;margin:10px 0}
+.err{border-color:var(--er);color:#ffc4c4;background:#2e1c1c}
+pre{background:#0a0f1a;border-radius:8px;padding:8px;max-height:140px;overflow:auto;direction:ltr;font-size:12px;white-space:pre-wrap}
+@media(max-width:600px){main{padding:12px}header{padding:10px 12px}}
+</style><body>
+<header><b>MK AI Studio</b><span class="tag">نسخة تجريبية</span><span style="flex:1"></span><span class="count" id="env"></span></header>
+<nav id="nav"></nav>
+<main id="main"></main>
+<script src="ort.min.js"></script><script src="jszip.min.js"></script>
 <script>
-const BUCKET='https://storage.googleapis.com/tfjs-models/tfjs/mobilenet_v1_0.25_224/';const classes=[];let feat,head=null;const log=t=>logEl.textContent+=t+'\n';const logEl=document.getElementById('log');
-function addClass(name){const idx=classes.length;classes.push({name,imgs:[]});
- const d=document.createElement('div');d.innerHTML=`<p><input class="nm" value="${name}"> <input type="file" class="fi" accept="image/*" multiple capture="environment"> <span class="cnt">0 صورة</span></p>`;
- d.querySelector('.nm').oninput=e=>classes[idx].name=e.target.value;
- d.querySelector('.fi').onchange=async e=>{for(const f of e.target.files){const im=new Image();im.src=URL.createObjectURL(f);await im.decode();classes[idx].imgs.push(im);}d.querySelector('.cnt').textContent=classes[idx].imgs.length+' صورة';};
- document.getElementById('classes').appendChild(d);}
-document.getElementById('add').onclick=()=>addClass('class'+(classes.length+1));addClass('class1');addClass('class2');
-const emb=el=>tf.tidy(()=>feat.predict(tf.browser.fromPixels(el).resizeBilinear([224,224]).toFloat().div(127.5).sub(1).expandDims(0)).mean([1,2]));
-(async()=>{let baseURL='base/';try{const r=await fetch('base/model.json',{method:'HEAD'});if(!r.ok)throw 0;}catch(e){baseURL=BUCKET;}window.baseURL=baseURL;const full=await tf.loadLayersModel(baseURL+'model.json');feat=tf.model({inputs:full.inputs,outputs:full.getLayer('conv_pw_13_relu').output});st.textContent='النموذج الأساسي جاهز';train.disabled=false;window.studioReady=true;})();
-document.getElementById('train').onclick=async()=>{
- const n=classes.length;const X=[],Y=[];classes.forEach((c,ci)=>c.imgs.forEach(im=>{X.push(emb(im));Y.push(ci);}));
- if(X.length<n*2){log('محتاج صورتين على الأقل لكل فئة');return;}
- const xs=tf.concat(X),ys=tf.oneHot(Y,n);head=tf.sequential({layers:[tf.layers.dense({inputShape:[xs.shape[1]],units:n,activation:'softmax'})]});
- head.compile({optimizer:tf.train.adam(0.01),loss:'categoricalCrossentropy',metrics:['accuracy']});
- const t0=performance.now();const h=await head.fit(xs,ys,{epochs:60,batchSize:16,verbose:0});
- log('تم التدريب داخل المتصفح في '+Math.round(performance.now()-t0)+' ms. دقة التدريب (مش اختبار): '+h.history.acc.at(-1).toFixed(2));
- window.trainedInBrowser=true;export_.disabled=false;};
-const export_=document.getElementById('export');
-export_.onclick=async()=>{const w=head.getWeights();const hosted=window.baseURL===BUCKET;const aid=crypto.randomUUID().replace(/-/g,'').slice(0,10);
- const H={task:'classify',classes:classes.map(c=>c.name),D:w[0].shape[0],W:Array.from(await w[0].data()),b:Array.from(await w[1].data())};if(hosted)H.baseURL=BUCKET;
- const z=new JSZip();const all=(await (await fetch('template/files.json')).json()).filter(f=>f!=='sw.js'&&f!=='manifest.json'&&(!hosted||!f.startsWith('base/')));
- for(const f of all){z.file(f,await (await fetch('template/'+f)).arrayBuffer());}
- z.file('head.json',JSON.stringify(H));
- z.file('manifest.json',JSON.stringify({name:'MK AI classifier '+aid,short_name:'MK AI '+aid.slice(0,4),id:'mkai-cls-'+aid,start_url:'./',display:'standalone',icons:[]}));
- const F=['./',...all.map(f=>'./'+f),'./head.json','./manifest.json'];const C='mkai-cls-'+aid;
- z.file('sw.js',`const C=${JSON.stringify(C)};const F=${JSON.stringify(F)};const B=${JSON.stringify(hosted?BUCKET:'')};self.addEventListener('install',e=>e.waitUntil(caches.open(C).then(c=>c.addAll(F))));self.addEventListener('fetch',e=>{const u=e.request.url;if(e.request.method!=='GET')return;e.respondWith(caches.open(C).then(c=>c.match(e.request).then(r=>r||fetch(e.request).then(n=>{if(n.ok&&((B&&u.startsWith(B))||u.startsWith(self.registration.scope)))c.put(e.request,n.clone());return n;}))));});`);
- const blob=await z.generateAsync({type:'blob'});
- const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='mkai-classifier-'+aid+'.zip';a.click();log('تم التصدير. معرّف التطبيق: '+aid+(hosted?' (النموذج الأساسي بيتحمّل من Google أول فتح، من غير تضمينه في الملف)':''));window.exported=true;window.appId=aid;};
+ort.env.wasm.numThreads=1;ort.env.wasm.proxy=false;ort.env.wasm.wasmPaths='./';
+const COL=['#4f8cff','#3ecf8e','#f5b942','#ff6b6b','#b07cff','#2fd3e0','#ff8fcf','#9acd32'];
+const S={step:0,mode:null,classes:[{name:'class1',imgs:[]},{name:'class2',imgs:[]}],dimgs:[],dcls:['object'],cur:0,idx:0,head:null,backend:false,sess:null,train:{state:'idle',pct:0,log:[],loss:[]},detZip:false,exported:false};
+const STEPS=['نوع المشروع','البيانات','التدريب','الاختبار','التصدير'];
+const $=(t,a={},...k)=>{const e=document.createElement(t);for(const[x,v]of Object.entries(a)){if(x==='on')for(const[ev,f]of Object.entries(v))e.addEventListener(ev,f);else if(x==='class')e.className=v;else if(x==='style')e.style.cssText=v;else e[x]=v;}k.flat().forEach(c=>e.append(c));return e;};
+const load=f=>new Promise(async(r)=>{const im=new Image();im.src=URL.createObjectURL(f);await im.decode();r(im);});
+fetch('/api/status').then(r=>r.ok?r.json():Promise.reject()).then(j=>{if(typeof j.state!=='string'||!Array.isArray(j.log))throw 0;S.backend=true;}).catch(()=>{S.backend=false;}).finally(()=>{document.getElementById('env').textContent=S.backend?'● التدريب المحلي متصل':'○ تشغيل من المتصفح فقط';render();});
+ort.InferenceSession.create('base/feat.onnx',{executionProviders:['wasm']}).then(s=>{S.sess=s;if(S.mode==='classify')render();}).catch(e=>{S.sessErr=String(e);});
+function go(n){S.step=n;render();}
+function nav(){const n=document.getElementById('nav');n.innerHTML='';STEPS.forEach((t,i)=>n.append($('button',{class:(i===S.step?'on ':'')+(stepDone(i)?'done':''),textContent:(i+1)+'. '+t,disabled:i>0&&!S.mode,on:{click:()=>go(i)}})));}
+function stepDone(i){return i===0?!!S.mode:i===1?dataOk():i===2?(S.mode==='classify'?!!S.head:S.train.state==='done'):i===4?S.exported:false;}
+function dataOk(){return S.mode==='classify'?S.classes.every(c=>c.imgs.length>=2):S.dimgs.length>=1&&S.dimgs.some(i=>i.boxes.length);}
+function render(){nav();const m=document.getElementById('main');m.innerHTML='';[stepMode,stepData,stepTrain,stepTest,stepExport][S.step](m);}
+function foot(m,back,next,label,ok=true){m.append($('div',{class:'row',style:'margin-top:16px'},back!=null?$('button',{class:'btn sec',textContent:'رجوع',on:{click:()=>go(back)}}):'',next!=null?$('button',{class:'btn',textContent:label||'التالي',disabled:!ok,on:{click:()=>go(next)}}):''));}
+// 1 mode
+function stepMode(m){m.append($('h2',{textContent:'اختار نوع المشروع'}),$('p',{class:'sub',textContent:'المعالجة بتتم على جهازك. الصور مش بتترفع لأي سيرفر.'}));
+ const pick=(k,t,d,w)=>$('div',{class:'card pick '+(S.mode===k?'on':''),on:{click:()=>{S.mode=k;S.head=null;S.train={state:'idle',pct:0,log:[],loss:[]};render();}}},$('h3',{textContent:t}),$('div',{textContent:d}),$('small',{textContent:w}));
+ m.append($('div',{class:'grid g2'},pick('classify','تصنيف الصور','تعلّم الجهاز يفرّق بين فئات (مثلاً قطط وكلاب) من صور لكل فئة.','التدريب بيتم هنا في المتصفح على جهازك.'),pick('detect','تحديد وعدّ الأشياء','ارسم مربعات حوالين الأشياء، والتطبيق الناتج بيحدّدها ويعدّها في الصورة.','التدريب محتاج برنامج التدريب المحلي على الكمبيوتر (Python).')));
+ foot(m,null,1,'ابدأ',!!S.mode);}
+// 2 data
+function stepData(m){if(S.mode==='classify')return dataClassify(m);return dataDetect(m);}
+function dataClassify(m){m.append($('h2',{textContent:'صور الفئات'}),$('p',{class:'sub',textContent:'أضف صور لكل فئة (صورتين على الأقل، والأفضل 20 أو أكتر بزوايا وإضاءة مختلفة).'}));
+ const g=$('div',{class:'grid g2'});S.classes.forEach((c,ci)=>{const th=$('div',{class:'thumbs'}),cnt=$('span',{class:'count',textContent:c.imgs.length+' صورة'});c.imgs.slice(-24).forEach(im=>th.append($('img',{src:im.src})));
+  g.append($('div',{class:'card'},$('div',{class:'row'},$('input',{type:'text',value:c.name,style:'flex:1;border-color:'+COL[ci%8],on:{input:e=>c.name=e.target.value}}),S.classes.length>2?$('button',{class:'btn sec',textContent:'حذف',on:{click:()=>{S.classes.splice(ci,1);render();}}}):''),
+   $('div',{class:'row',style:'margin-top:10px'},$('label',{class:'btn',textContent:'+ إضافة صور'},$('input',{type:'file',accept:'image/*',multiple:true,style:'display:none',on:{change:async e=>{for(const f of e.target.files)c.imgs.push(await load(f));render();}}})),cnt),th));});
+ m.append(g,$('div',{class:'row',style:'margin-top:12px'},$('button',{class:'btn sec',textContent:'+ فئة جديدة',on:{click:()=>{S.classes.push({name:'class'+(S.classes.length+1),imgs:[]});render();}}})));
+ if(!S.sess)m.append($('div',{class:'note',textContent:S.sessErr?'تعذّر تحميل النموذج الأساسي: '+S.sessErr:'جاري تحميل النموذج الأساسي…'}));
+ foot(m,0,2,'التالي: التدريب',dataOk());}
+function dataDetect(m){m.append($('h2',{textContent:'تحديد الأشياء على الصور'}),$('p',{class:'sub',textContent:'ارفع صور، اختار الفئة، واسحب بالماوس أو بإصبعك لرسم مربع حوالين كل شيء.'}));
+ const chips=$('div',{class:'chips'});S.dcls.forEach((c,i)=>chips.append($('button',{class:'chip'+(S.cur===i?' on':''),style:'border-color:'+COL[i%8]+';'+(S.cur===i?'background:'+COL[i%8]:''),textContent:c,on:{click:()=>{S.cur=i;render();}}})));
+ const nc=$('input',{type:'text',placeholder:'فئة جديدة',style:'width:120px'});chips.append(nc,$('button',{class:'btn sec',textContent:'+',on:{click:()=>{const v=nc.value.trim();if(v&&!S.dcls.includes(v)){S.dcls.push(v);S.cur=S.dcls.length-1;render();}}}}));
+ m.append($('div',{class:'card'},chips));
+ const it=S.dimgs[S.idx];const cv=$('canvas'),box=$('div',{class:'card',style:'margin-top:12px'});
+ m.append(box);box.append($('div',{class:'row'},$('label',{class:'btn',textContent:'+ إضافة صور'},$('input',{type:'file',accept:'image/*',multiple:true,style:'display:none',on:{change:async e=>{for(const f of e.target.files)S.dimgs.push({file:f,im:await load(f),boxes:[]});if(S.idx>=S.dimgs.length)S.idx=0;render();}}})),$('button',{class:'btn sec',textContent:'تراجع عن آخر مربع',on:{click:()=>{S.dimgs[S.idx]?.boxes.pop();render();}}}),$('span',{class:'count',textContent:S.dimgs.length?`صورة ${S.idx+1} من ${S.dimgs.length} - مربعات: ${it.boxes.length} (الإجمالي ${S.dimgs.reduce((a,x)=>a+x.boxes.length,0)})`:'لسه ما فيش صور'})));
+ if(it){box.append($('div',{style:'margin-top:10px'},cv));const g=cv.getContext('2d');let drag=null,st=null;
+  const draw=()=>{cv.width=it.im.naturalWidth;cv.height=it.im.naturalHeight;g.drawImage(it.im,0,0);const lw=Math.max(2,cv.width/200);g.lineWidth=lw;g.font=Math.max(13,cv.width/28)+'px sans-serif';g.direction='ltr';g.textAlign='left';it.boxes.concat(drag?[drag]:[]).forEach(b=>{const c=COL[b[4]%8];g.strokeStyle=c;g.strokeRect(b[0],b[1],b[2]-b[0],b[3]-b[1]);g.fillStyle=c;const t=S.dcls[b[4]]||'?';g.fillRect(b[0],b[1],g.measureText(t).width+8,parseInt(g.font)+4);g.fillStyle='#000';g.fillText(t,b[0]+4,b[1]+parseInt(g.font));});};
+  const pt=e=>{const r=cv.getBoundingClientRect();return[(e.clientX-r.left)*cv.width/r.width,(e.clientY-r.top)*cv.height/r.height];};
+  cv.style.touchAction='none';cv.onpointerdown=e=>{st=pt(e);cv.setPointerCapture(e.pointerId);};cv.onpointermove=e=>{if(!st)return;const p=pt(e);drag=[Math.min(st[0],p[0]),Math.min(st[1],p[1]),Math.max(st[0],p[0]),Math.max(st[1],p[1]),S.cur];draw();};
+  cv.onpointerup=()=>{if(drag&&drag[2]-drag[0]>4&&drag[3]-drag[1]>4){it.boxes.push(drag.map((v,i)=>i<4?Math.round(v):v));window.lastBoxAdded=true;}st=null;drag=null;render();};draw();
+  const sp=$('div',{class:'strip'});S.dimgs.forEach((x,i)=>sp.append($('img',{src:x.im.src,class:i===S.idx?'on':'',on:{click:()=>{S.idx=i;render();}}})));box.append(sp);}
+ m.append($('div',{class:'row',style:'margin-top:12px'},$('button',{class:'btn sec',textContent:'تصدير الداتا (zip)',disabled:!dataOk(),on:{click:async()=>{const b=await mkZip();const a=$('a',{href:URL.createObjectURL(b),download:'mkai-dataset.zip'});a.click();window.dataExported=true;}}})));
+ foot(m,0,2,'التالي: التدريب',dataOk());}
+async function mkZip(){const z=new JSZip();const meta={classes:S.dcls,images:[]};for(const[i,it]of S.dimgs.entries()){const n=`images/${i}.jpg`;z.file(n,await it.file.arrayBuffer());meta.images.push({file:n,width:it.im.naturalWidth,height:it.im.naturalHeight,boxes:it.boxes});}z.file('annotations.json',JSON.stringify(meta));return z.generateAsync({type:'blob'});}
+// 3 train
+const MEAN=[0.485,0.456,0.406],STD=[0.229,0.224,0.225];
+async function emb(el){const z=224,t=document.createElement('canvas');t.width=t.height=z;t.getContext('2d').drawImage(el,0,0,z,z);const d=t.getContext('2d').getImageData(0,0,z,z).data,n=z*z,x=new Float32Array(3*n);for(let i=0;i<n;i++)for(let c=0;c<3;c++)x[c*n+i]=(d[i*4+c]/255-MEAN[c])/STD[c];
+ const o=Array.from((await S.sess.run({image:new ort.Tensor('float32',x,[1,3,z,z])})).feat.data);const nr=Math.sqrt(o.reduce((a,v)=>a+v*v,0))||1;return o.map(v=>v/nr);}
+async function trainClassify(upd){const K=S.classes.length,X=[],Y=[],tot=S.classes.reduce((a,c)=>a+c.imgs.length,0);let n=0;
+ for(let c=0;c<K;c++)for(const im of S.classes[c].imgs){X.push(await emb(im));Y.push(c);upd('استخراج الميزات من الصور',++n/tot*40);}
+ const D=X[0].length,W=new Float64Array(D*K),b=new Float64Array(K),N=X.length,lr=2,EP=300;let acc=0;S.train.loss=[];
+ for(let e=0;e<EP;e++){const gW=new Float64Array(D*K),gb=new Float64Array(K);let ok=0,L=0;
+  for(let i=0;i<N;i++){const x=X[i],l=new Array(K);for(let k=0;k<K;k++){let s=b[k];for(let j=0;j<D;j++)s+=x[j]*W[j*K+k];l[k]=s;}const mx=Math.max(...l),ex=l.map(v=>Math.exp(v-mx)),su=ex.reduce((a,c)=>a+c);let am=0;for(let k=0;k<K;k++){ex[k]/=su;if(ex[k]>ex[am])am=k;}if(am===Y[i])ok++;L-=Math.log(ex[Y[i]]+1e-9);
+   for(let k=0;k<K;k++){const g=ex[k]-(k===Y[i]?1:0);gb[k]+=g/N;for(let j=0;j<D;j++)gW[j*K+k]+=g*x[j]/N;}}
+  for(let q=0;q<D*K;q++)W[q]-=lr*(gW[q]+1e-4*W[q]);for(let k=0;k<K;k++)b[k]-=lr*gb[k];acc=ok/N;S.train.loss.push(L/N);
+  if(e%10===0){upd('تدريب الطبقة الأخيرة: دورة '+(e+1)+' من '+EP,40+e/EP*60);await new Promise(r=>setTimeout(r));}}
+ S.head={W:Array.from(W),b:Array.from(b),D,acc};}
+function chart(cv,v){const g=cv.getContext('2d');cv.width=480;cv.height=120;g.fillStyle='#0a0f1a';g.fillRect(0,0,480,120);if(v.length<2)return;const mx=Math.max(...v),mn=Math.min(...v);g.strokeStyle='#4f8cff';g.lineWidth=2;g.beginPath();v.forEach((y,i)=>{const px=i/(v.length-1)*470+5,py=110-(y-mn)/(mx-mn+1e-9)*100;i?g.lineTo(px,py):g.moveTo(px,py);});g.stroke();g.fillStyle='#97a3c0';g.font='11px sans-serif';g.fillText('loss',6,12);}
+function stepTrain(m){m.append($('h2',{textContent:'التدريب'}));const bar=$('i'),msg=$('div',{class:'count',textContent:S.train.log.at(-1)||''}),cv=$('canvas',{style:'width:100%;max-width:480px;margin-top:8px'}),lg=$('pre');
+ const upd=(t,p)=>{bar.style.width=p+'%';msg.textContent=t;S.train.pct=p;};
+ const card=$('div',{class:'card'});m.append(card);
+ if(S.mode==='classify'){m.append();card.append($('p',{class:'sub',textContent:`${S.classes.length} فئات، ${S.classes.reduce((a,c)=>a+c.imgs.length,0)} صورة. التدريب بيتم على جهازك: نموذج MobileNetV3 جاهز + طبقة أخيرة بتتدرّب على صورك.`}),$('div',{class:'bar'},bar),msg,cv,$('div',{class:'row',style:'margin-top:12px'},$('button',{class:'btn',id:'trainbtn',textContent:S.head?'أعد التدريب':'ابدأ التدريب',disabled:!S.sess,on:{click:async e=>{e.target.disabled=true;await trainClassify(upd);upd('تم التدريب',100);window.trainedInBrowser=true;S.train.state='done';render();}}})));
+  if(S.head){bar.style.width='100%';msg.textContent='تم. دقة التدريب (على نفس الصور، مش اختبار): '+(S.head.acc*100).toFixed(0)+'%';chart(cv,S.train.loss);}}
+ else{card.append($('p',{class:'sub',textContent:`${S.dimgs.length} صورة، ${S.dimgs.reduce((a,x)=>a+x.boxes.length,0)} مربع. التدريب بيشتغل في برنامج Python المحلي على كمبيوترك (RT-DETR، على المعالج).`}));
+  if(!S.backend)card.append($('div',{class:'note err',textContent:'برنامج التدريب المحلي مش شغال. شغّله من مجلد المستودع بالأمر: python server/studio_server.py 8000 ثم افتح http://127.0.0.1:8000 . تقدر تصدّر الداتا (zip) من خطوة البيانات.'}));
+  card.append($('div',{class:'bar'},bar),msg,lg,$('div',{class:'row',style:'margin-top:12px'},$('button',{class:'btn',textContent:S.train.state==='done'?'أعد التدريب':'ابدأ التدريب',disabled:!S.backend||S.train.state==='running',on:{click:async()=>{S.train.state='running';const r=await fetch('/api/train?epochs='+(new URLSearchParams(location.search).get('epochs')||12),{method:'POST',body:await mkZip()});if(r.status!==202){S.train.state='error';msg.textContent='فشل البدء ('+r.status+')';return;}
+    const t=setInterval(async()=>{const s=await (await fetch('/api/status')).json();msg.textContent='الحالة: '+s.state;lg.textContent=s.log.slice(-8).join('\n');const pr=s.log.filter(l=>/epoch|PROGRESS/i.test(l)).length;bar.style.width=Math.min(95,pr*8)+'%';
+     if(s.state==='done'){clearInterval(t);bar.style.width='100%';S.train.state='done';window.trainDone=true;render();}if(s.state==='error'){clearInterval(t);S.train.state='error';window.trainError=true;}},1500);}}})));
+  if(S.train.state==='done')bar.style.width='100%';}
+ foot(m,1,3,'التالي: الاختبار',S.mode==='classify'?!!S.head:S.train.state==='done');}
+// 4 test
+function stepTest(m){m.append($('h2',{textContent:'الاختبار'}));
+ if(S.mode!=='classify'){m.append($('div',{class:'card'},$('p',{textContent:'اختبار الكاشف بيتم جوه التطبيق الناتج بعد التصدير: افتحه وارفع صورة وهيرسم المربعات ويعدّ الأشياء. ما فيش اختبار مدمج للكاشف هنا لسه.'})));foot(m,2,4,'التالي: التصدير');return;}
+ const out=$('div'),img=$('img',{style:'max-width:100%;border-radius:10px;margin-top:10px;display:none'});
+ m.append($('div',{class:'card'},$('p',{class:'sub',textContent:'جرّب صورة جديدة ما اتدرّبش عليها.'}),$('label',{class:'btn',textContent:'اختار صورة'},$('input',{type:'file',accept:'image/*',style:'display:none',on:{change:async e=>{const im=await load(e.target.files[0]);img.src=im.src;img.style.display='block';const f=await emb(im),K=S.classes.length,l=[];for(let k=0;k<K;k++){let s=S.head.b[k];for(let j=0;j<S.head.D;j++)s+=f[j]*S.head.W[j*K+k];l.push(s);}const mx=Math.max(...l),ex=l.map(v=>Math.exp(v-mx)),su=ex.reduce((a,c)=>a+c),p=ex.map(v=>v/su);out.innerHTML='';p.forEach((v,k)=>out.append($('div',{class:'res'},$('span',{class:'n',textContent:S.classes[k].name}),$('div',{class:'bar'},$('i',{style:`width:${v*100}%;background:${COL[k%8]}`})),$('span',{class:'p',textContent:(v*100).toFixed(1)+'%'}))));window.tested=true;}}})),img,out));
+ foot(m,2,4,'التالي: التصدير');}
+// 5 export
+function stepExport(m){m.append($('h2',{textContent:'تصدير التطبيق'}));const note=$('div',{class:'note'});
+ const c=$('div',{class:'card'});m.append(c);
+ if(S.mode==='classify'){c.append($('p',{textContent:'ملف zip فيه تطبيق ويب. لازم يتقدّم من سيرفر ويب (مش فتح الملف مباشرة)، مثلاً python -m http.server بعد فك الضغط، أو ترفعه على استضافة HTTPS. أول فتح بيخزّن ملفات التطبيق على الجهاز، وبعدها بيشتغل بدون إنترنت على نفس العنوان. مجرّب في Chrome بدون واجهة بس.'}),$('button',{class:'btn',textContent:'نزّل التطبيق (zip)',on:{click:exportClassify}}));}
+ else c.append($('p',{textContent:'التطبيق الناتج من التدريب المحلي (zip، حوالي 85 ميجا) فيه الكاشف بصيغة ONNX.'}),$('a',{class:'btn',textContent:'نزّل تطبيق الكاشف (zip)',href:'/api/result.zip',download:'mkai-detector-app.zip',style:'text-decoration:none;display:inline-block;'+(S.train.state==='done'?'':'opacity:.4;pointer-events:none'),on:{click:()=>{S.exported=true;window.exported=true;}}}));
+ m.append($('div',{class:'note',textContent:'حالة الاختبار: متجرّب على Linux ومتصفح Chrome بدون واجهة فقط. لسه ما اتجرّبش على Windows كمثبّت أو على موبايل أو كاميرا. النموذج الأساسي: timm MobileNetV3-small (Apache-2.0 حسب بطاقة النموذج، متدرّب على ImageNet-1k)؛ التفاصيل ونص الترخيص في NOTICE-MODEL.txt وLICENSE-APACHE-2.0.txt جوه التطبيق.'}));foot(m,3,null);}
+async function exportClassify(){const aid=crypto.randomUUID().replace(/-/g,'').slice(0,10);const H={task:'classify',classes:S.classes.map(c=>c.name),D:S.head.D,W:S.head.W,b:S.head.b};
+ const z=new JSZip();const all=await (await fetch('template/files.json')).json();for(const f of all)z.file(f,await (await fetch('template/'+f)).arrayBuffer());
+ z.file('head.json',JSON.stringify(H));z.file('manifest.json',JSON.stringify({name:'MK AI classifier '+aid,short_name:'MK AI '+aid.slice(0,4),id:'mkai-cls-'+aid,start_url:'./',display:'standalone',icons:[]}));
+ const F=['./',...all.map(f=>'./'+f),'./head.json','./manifest.json'],C='mkai-cls-'+aid;
+ z.file('sw.js',`const C=${JSON.stringify(C)};const F=${JSON.stringify(F)};self.addEventListener('install',e=>e.waitUntil(caches.open(C).then(c=>c.addAll(F))));self.addEventListener('fetch',e=>{if(e.request.method!=='GET')return;e.respondWith(caches.open(C).then(c=>c.match(e.request).then(r=>r||fetch(e.request))));});`);
+ const b=await z.generateAsync({type:'blob'});$('a',{href:URL.createObjectURL(b),download:'mkai-classifier-'+aid+'.zip'}).click();S.exported=true;window.exported=true;window.appId=aid;render();}
 </script></body></html>
