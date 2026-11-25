@@ -3,8 +3,8 @@ rem MK AI local trainer launcher for Windows (prototype). Not tested on a real W
 rem MKAI_CHECK=1 runs the checks without installing or starting anything (used by CI).
 cd /d "%~dp0"
 setlocal
-where python >nul 2>nul || (echo [MK AI] Python was not found. Install Python 3.10 or newer from https://www.python.org/downloads/ and tick "Add python.exe to PATH", then run this file again. & goto :fail)
-python -c "import sys;sys.exit(0 if sys.version_info>=(3,10) else 1)" || (echo [MK AI] Your Python is too old. Python 3.10 or newer is required. & goto :fail)
+where python >nul 2>nul || (echo [MK AI] Python was not found. Install Python 3.10, 3.11 or 3.12 from https://www.python.org/downloads/ and tick "Add python.exe to PATH", then run this file again. & goto :fail)
+python -c "import sys;sys.exit(0 if (3,10)<=sys.version_info[:2]<=(3,12) else 1)" || (echo [MK AI] This Python version is not supported. Use Python 3.10, 3.11 or 3.12. & goto :fail)
 where node >nul 2>nul || (echo [MK AI] Node.js was not found. Install Node.js 22 or newer from https://nodejs.org/ then run this file again. & goto :fail)
 node -e "process.exit(parseInt(process.versions.node)>=22?0:1)" || (echo [MK AI] Your Node.js is too old. Node.js 22 or newer is required. & goto :fail)
 if "%MKAI_CHECK%"=="1" goto :npmstep
