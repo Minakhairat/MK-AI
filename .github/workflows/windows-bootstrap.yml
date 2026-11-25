@@ -28,6 +28,18 @@ jobs:
           npm install && npm run setup
           python -m pip freeze | grep -v '^torch\|^torchvision\| @ ' > constraints.txt
           wc -l constraints.txt
+      - name: Verify the pinned download facts (Sigstore for Python, PyPI hash for pip, redirect hosts)
+        run: |
+          set -e
+          pip install -q sigstore
+          curl -fsSL -o e.zip https://www.python.org/ftp/python/3.12.10/python-3.12.10-embed-amd64.zip
+          curl -fsSL -o e.zip.sigstore https://www.python.org/ftp/python/3.12.10/python-3.12.10-embed-amd64.zip.sigstore
+          python -m sigstore verify identity --bundle e.zip.sigstore --cert-identity thomas@python.org --cert-oidc-issuer https://accounts.google.com e.zip
+          H=$(sha256sum e.zip | cut -d' ' -f1); echo "python sha256 $H"; test "$H" = 4acbed6dd1c744b0376e3b1cf57ce906f9dc9e95e68824584c8099a63025a3c3
+          curl -fsSL -o pip.whl https://files.pythonhosted.org/packages/07/25/ee8c38ae72d66b844ce8eb9711ba905dba21ca1a8a0c960057c41cd23337/pip-26.3-py3-none-any.whl
+          P=$(sha256sum pip.whl | cut -d' ' -f1); echo "pip sha256 $P"; test "$P" = f3b60b20ffaadd4415ed7957212a38ac63fa4c5fa375bd0f4a797777940fad13
+          curl -fsSIL -o /dev/null -w 'aka.ms final: %{url_effective}\n' https://aka.ms/vc14/vc_redist.x64.exe | tee -a "$GITHUB_STEP_SUMMARY"
+          echo 'Python embed: Sigstore verified (thomas@python.org, accounts.google.com), sha256 matches pin' >> "$GITHUB_STEP_SUMMARY"
       - name: Assemble the small starter (MK AI files only, no third-party binaries)
         run: |
           set -e
@@ -39,9 +51,21 @@ jobs:
           cp windows-bootstrap/setup.ps1 windows-bootstrap/README-NOTICES.txt $P/windows-bootstrap/
           sed 's/\r$//; s/$/\r/' windows-bootstrap/MK-AI.bat > $P/MK-AI.bat
           head -c 60 $P/MK-AI.bat | od -c | head -3
-          echo "--- binaries inside the starter:"; find $P -type f \( -name '*.dll' -o -name '*.exe' -o -name '*.pyd' -o -name '*.onnx' -o -name '*.pt' -o -name '*.safetensors' \) -printf '%s %p\n' | tee /tmp/bins.txt
-          if grep -i 'dll\|exe\|pyd\|\.pt\|safetensors' /tmp/bins.txt; then echo 'AUDIT FAIL: third-party binary or model in starter'; exit 1; fi
+          echo "--- native binaries inside the starter (must be none):"; find $P -type f \( -name '*.dll' -o -name '*.exe' -o -name '*.pyd' \) -printf '%s %p\n' | tee /tmp/bins.txt
+          if [ -s /tmp/bins.txt ]; then echo 'AUDIT FAIL: native binary in starter'; exit 1; fi
+          echo "--- python-framework models/weights inside the starter (must be none):"; find $P -type f \( -name '*.pt' -o -name '*.pth' -o -name '*.safetensors' -o -name '*.ckpt' \) -printf '%s %p\n' | tee /tmp/models.txt
+          if [ -s /tmp/models.txt ]; then echo 'AUDIT FAIL: model weights in starter'; exit 1; fi
           if find $P -type f \( -name '*.jpg' -o -name '*.jpeg' -o -name '*.zip' \) | grep -i 'blood\|oxford\|app\.zip\|ds\.zip'; then echo 'AUDIT FAIL: dataset'; exit 1; fi
+          test -f $P/studio/template/THIRD-PARTY-NOTICES.txt && test -f $P/studio/template/ORT-THIRD-PARTY-NOTICES.txt && test -f $P/studio/base/NOTICE-MODEL.txt || { echo 'AUDIT FAIL: expected notice file missing'; exit 1; }
+          {
+            echo '### Actual third-party content inside the starter (Studio web assets, shipped with their notices)'
+            echo 'files over 100 KB:'; find $P -type f -size +100k -printf '%s %P\n' | sort -k2
+            echo 'notice files:'; find $P -type f \( -iname '*NOTICE*' -o -iname 'LICENSE*' \) -printf '%s %P\n'
+            echo '--- NOTICE-MODEL.txt (studio/base):'; cat $P/studio/base/NOTICE-MODEL.txt | head -30
+            echo '--- jszip.min.js header:'; head -c 600 $P/studio/jszip.min.js; echo
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+          cp windows-bootstrap/README-NOTICES.txt $P/windows-bootstrap/ 
+          find $P -type d -empty
           cd pkg && 7z a -tzip -mx=5 ../MK-AI-Windows-starter.zip MK-AI >/dev/null
           cd ..
           { echo "### Windows starter (private CI build, NOT uploaded or published)"; echo "zip bytes: $(stat -c %s MK-AI-Windows-starter.zip)"; echo "unpacked bytes: $(du -sb pkg/MK-AI | cut -f1)"; echo "sha256: $(sha256sum MK-AI-Windows-starter.zip | cut -d' ' -f1)"; echo "files: $(find pkg -type f | wc -l)"; } | tee -a "$GITHUB_STEP_SUMMARY"
@@ -53,7 +77,7 @@ jobs:
           $root = 'C:\clean\MK-AI'
           $sys = "$env:SystemRoot\System32"
           # missing-runtime branch (forced; CI cannot uninstall the runtime): must stop with code 2 and print the Microsoft URL
-          $env:MKAI_FORCE_NO_VCRT = '1'; $env:MKAI_NONINTERACTIVE = '1'; $env:MKAI_NOBROWSER = '1'
+          $env:MKAI_FORCE_NO_VCRT = '1'; $env:MKAI_NONINTERACTIVE = '1'; $env:MKAI_ASSUME_YES = '1'; $env:MKAI_NOBROWSER = '1'
           $neg = cmd /c "set PATH=$sys&& cd /d $root && MK-AI.bat" 2>&1
           $negcode = $LASTEXITCODE
           Write-Host ($neg -join "`n"); Write-Host "missing-runtime branch exit code: $negcode"
