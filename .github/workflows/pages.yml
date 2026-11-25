@@ -33,7 +33,7 @@ jobs:
       - name: Fail if weights slipped in
         run: |
           if find site -name '*.bin' -o -name 'model.json' -o -name '*.onnx' | grep .; then exit 1; fi
-      - uses: actions/upload-pages-artifact@v3
+      - uses: actions/upload-pages-artifact@v4
         with: { path: site }
       - id: dep
         uses: actions/deploy-pages@v4
