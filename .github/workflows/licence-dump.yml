@@ -1,0 +1,45 @@
+name: licence-dump
+on:
+  workflow_dispatch:
+  push:
+    paths: ['licence-dump.version']
+permissions:
+  contents: read
+jobs:
+  dump:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12' }
+      - name: Download the exact Windows wheels (licence files only are read; nothing is kept or published)
+        run: |
+          set -e
+          mkdir w && cd w
+          pip download --no-deps --only-binary=:all: --platform win_amd64 --python-version 3.12 --implementation cp numpy scipy tqdm pillow onnxruntime onnx safetensors tokenizers pydantic_core regex sympy mpmath 2>&1 | tail -3
+          pip download --no-deps --only-binary=:all: --platform win_amd64 --python-version 3.12 --implementation cp torch==2.6.0 torchvision==0.21.0 --index-url https://download.pytorch.org/whl/cpu 2>&1 | tail -3
+          pip download --no-deps --only-binary=:all: --platform any transformers timm packaging huggingface_hub 2>&1 | tail -3
+          ls -la
+      - name: Print licence files to the run summary
+        run: |
+          python - <<'PYEOF'
+          import zipfile,glob,re,os
+          out=open(os.environ['GITHUB_STEP_SUMMARY'],'w')
+          pat=re.compile(r'(^|/)(LICEN[CS]E|COPYING|NOTICE|THIRD[-_ ]?PARTY|LICENSES?)[^/]*$',re.I)
+          kw=re.compile(r'(GPL|LGPL|AGPL|GNU |MPL|Mozilla|Intel|OpenBLAS|libgfortran|gcc|exception|dual[- ]licen|OR |non-?commercial)',re.I)
+          for w in sorted(glob.glob('w/*.whl')):
+              z=zipfile.ZipFile(w)
+              out.write('\n## %s (%d MB)\n'%(os.path.basename(w),os.path.getsize(w)//1000000))
+              names=[n for n in z.namelist() if pat.search(n) and not n.endswith('/')]
+              out.write('licence files: %s\n'%', '.join('%s(%d)'%(n.split('.dist-info/')[-1],z.getinfo(n).file_size) for n in names))
+              bundled=[n for n in z.namelist() if re.search(r'\.libs/|/lib/.*\.dll$|\.dll$',n)]
+              out.write('bundled binaries: %s\n'%', '.join(sorted(set(os.path.basename(n) for n in bundled))[:40]))
+              for n in names:
+                  t=z.read(n).decode('utf-8','ignore')
+                  out.write('\n### %s head\n```\n%s\n```\n'%(n,'\n'.join(t.split('\n')[:25])))
+                  hits=[l.strip()[:200] for l in t.split('\n') if kw.search(l)][:40]
+                  out.write('keyword lines (triage only):\n```\n%s\n```\n'%'\n'.join(hits))
+          out.close()
+          PYEOF
+          wc -c "$GITHUB_STEP_SUMMARY"
