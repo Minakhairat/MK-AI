@@ -26,7 +26,7 @@ jobs:
           python trainer/selftest.py
       - name: Build the runner APKs (Capacitor 7 debug). Clean APK has no test files; test APK adds CI-only bundled synthetic export zips
         run: |
-          pip install onnx
+          pip install onnx onnxruntime numpy
           python android-runner/prep_classify_zip.py studio/base/feat.onnx build/test-classify.zip
           cp build/selftest/out/app.zip build/test-detect.zip
           mkdir -p wrap/www && cd wrap
