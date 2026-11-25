@@ -25,6 +25,7 @@ async function mk(){const z=new JSZip();const meta={classes:classes(),images:[]}
 exp.onclick=async()=>{const blob=await mk();const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='mkai-dataset.zip';a.click();window.exported=true;};
 </script></body></html>
 <script>
+fetch('/api/status').then(r=>{if(!r.ok)throw 0;}).catch(()=>{trn.disabled=true;tst.textContent='التدريب على الجهاز مش متاح هنا: شغّل برنامج التدريب المحلي (python server/studio_server.py 8000 من المستودع) وافتح الصفحة منه. تقدر تصدّر الداتا (zip) من غير سيرفر.';});
 trn.onclick=async()=>{const r=await fetch('/api/train?epochs='+(new URLSearchParams(location.search).get('epochs')||12),{method:'POST',body:await mk()});if(r.status!==202){tst.textContent='السيرفر المحلي مش شغال أو فيه تدريب جاري ('+r.status+')';return;}
  const t=setInterval(async()=>{const s=await (await fetch('/api/status')).json();tst.textContent='الحالة: '+s.state+' - '+(s.log.at(-1)||'');
   if(s.state==='done'){clearInterval(t);const a=document.createElement('a');a.href='/api/result.zip';a.download='mkai-detector-app.zip';a.click();window.trainDone=true;}
