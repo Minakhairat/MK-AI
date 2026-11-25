@@ -33,6 +33,8 @@ jobs:
           echo "window.MKAI_TEST=['test-classify.zip','test-detect.zip'];" > www/test-config.js
           cat > www/ci-out.js <<'JS'
           (function(){const o=document.createElement('pre');o.id='ciout';o.style.cssText='white-space:pre-wrap;font:12px monospace;color:#9f9;direction:ltr;text-align:left;border-top:1px solid #444;margin-top:12px';document.body.appendChild(o);const l=console.log;console.log=function(){l.apply(console,arguments);const m=String(arguments[0]);if(/MKAI_/.test(m))o.textContent+=m.replace(/^.*MKAI_/,'MKAI_')+'\n';};window.addEventListener('error',e=>{o.textContent+='JSERROR '+e.message+'\n';});})();
+          const of=window.fetch;window.fetch=function(u){const s=String(u);if(/test-(classify|detect)\.zip$/.test(s))return new Promise((res,rej)=>{const x=new XMLHttpRequest();x.open('GET',s);x.responseType='blob';x.onload=()=>res({blob:()=>Promise.resolve(x.response)});x.onerror=()=>rej(new Error('xhr fail'));x.send();});return of.apply(this,arguments);};
+          console.log('MKAI_PROBE origin='+location.origin+' secure='+window.isSecureContext+' caches='+(typeof caches)+' wasm='+(typeof WebAssembly)+' getUserMedia='+!!(navigator.mediaDevices&&navigator.mediaDevices.getUserMedia));
           JS
           # iOS-only safe-area patch (the shared runner source is NOT changed here)
           echo "body{padding-top:env(safe-area-inset-top);padding-bottom:env(safe-area-inset-bottom)}" > www/ios-safe.css
