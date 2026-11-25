@@ -108,6 +108,7 @@ jobs:
       - name: Dependency, VC++ runtime and licence review
         run: |
           set -e
+          exec > >(tee /tmp/review.log) 2>&1
           pip install pefile >/dev/null
           P=pkg/MK-AI
           # backbone licence material: Apache-2.0 text + the model card as downloaded
@@ -166,6 +167,8 @@ jobs:
           cd - >/dev/null
           cat $P/licenses/PACKAGES.txt | head -80
           find $P/hf -type f -printf '%s %p\n' | sort -k2 | head -20
+          sleep 1
+          { echo '### Dependency / VC++ runtime / licence review (build log)'; echo '```'; cat /tmp/review.log; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
       - name: Zip (not uploaded anywhere)
         run: |
           cd pkg && 7z a -tzip -mx=5 ../MK-AI-Windows-portable.zip MK-AI >/dev/null
@@ -215,7 +218,9 @@ jobs:
           & "$root\python\python.exe" -c "import sys,torch,transformers,onnxruntime;print(sys.version);print('torch',torch.__version__)"
           if ($LASTEXITCODE -ne 0) { throw "python import check exit $LASTEXITCODE" }
           Set-Content C:\clean\mods.py "import ctypes,ctypes.wintypes as w,os`nimport torch,transformers,onnxruntime`nfrom transformers import RTDetrForObjectDetection`nk=ctypes.WinDLL('kernel32');ps=ctypes.WinDLL('psapi')`nk.GetCurrentProcess.restype=w.HANDLE`nh=k.GetCurrentProcess();arr=(w.HMODULE*2048)();n=w.DWORD()`nps.EnumProcessModules(h,arr,ctypes.sizeof(arr),ctypes.byref(n))`nbuf=ctypes.create_unicode_buffer(1024);bad=[]`nfor i in range(n.value//ctypes.sizeof(w.HMODULE)):`n    ps.GetModuleFileNameExW(h,arr[i],buf,1024);p=buf.value;b=os.path.basename(p).lower()`n    if b.startswith(('msvcp','vcruntime','concrt','vcomp')):`n        print('VCRT',p)`n        if not p.lower().startswith('c:\\clean'): bad.append(p)`nprint('VCRT_FROM_SYSTEM:',bad)"
-          & "$root\python\python.exe" C:\clean\mods.py
+          $modsout = & "$root\python\python.exe" C:\clean\mods.py
+          $modsout | Out-Host
+          Add-Content $env:GITHUB_STEP_SUMMARY ("### Clean-machine loaded VC runtime modules`n``````n" + ($modsout -join "`n") + "`n``````")
           & "$root\python\python.exe" trainer\selftest.py
           if ($LASTEXITCODE -ne 0) { throw "selftest exit $LASTEXITCODE" }
           Write-Host 'clean-machine detector self-test OK (synthetic data, pipeline check only)'
