@@ -18,17 +18,26 @@ jobs:
         with: { python-version: '3.11' }
       - name: Assets and the CI-only synthetic classify test zip (pipeline check only)
         run: |
-          pip install torch==2.6.0 -r requirements.txt
+          pip install torch==2.6.0 torchvision==0.21.0 -r requirements.txt
           npm install && npm run setup
           python android-runner/prep_classify_zip.py studio/base/feat.onnx build/test-classify.zip
+          python trainer/selftest.py
+          ls -la build/selftest/out/app.zip build/test-classify.zip | tee -a "$GITHUB_STEP_SUMMARY"
+          cp build/selftest/out/app.zip build/test-detect.zip
       - name: Generate the native iOS project (Capacitor 7), unsigned
         run: |
           mkdir -p wrap/www && cd wrap
           cp ../android-runner/www/* www/
           cp ../studio/jszip.min.js ../studio/ort.min.js ../studio/ort-wasm-simd-threaded*.mjs ../studio/ort-wasm-simd-threaded*.wasm www/
-          cp ../build/test-classify.zip www/
-          echo "window.MKAI_TEST=['test-classify.zip'];" > www/test-config.js
-          sed -i '' 's#<script src="runner.js">#<script src="test-config.js"></script><script src="runner.js">#' www/index.html
+          cp ../build/test-classify.zip ../build/test-detect.zip www/
+          echo "window.MKAI_TEST=['test-classify.zip','test-detect.zip'];" > www/test-config.js
+          cat > www/ci-out.js <<'JS'
+          (function(){const o=document.createElement('pre');o.id='ciout';o.style.cssText='white-space:pre-wrap;font:12px monospace;color:#9f9;direction:ltr;text-align:left;border-top:1px solid #444;margin-top:12px';document.body.appendChild(o);const l=console.log;console.log=function(){l.apply(console,arguments);const m=String(arguments[0]);if(/MKAI_/.test(m))o.textContent+=m.replace(/^.*MKAI_/,'MKAI_')+'\n';};window.addEventListener('error',e=>{o.textContent+='JSERROR '+e.message+'\n';});})();
+          JS
+          # iOS-only safe-area patch (the shared runner source is NOT changed here)
+          echo "body{padding-top:env(safe-area-inset-top);padding-bottom:env(safe-area-inset-bottom)}" > www/ios-safe.css
+          sed -i '' 's#width=device-width,initial-scale=1#width=device-width,initial-scale=1,viewport-fit=cover#; s#<link rel="stylesheet" href="runner.css">#<link rel="stylesheet" href="runner.css"><link rel="stylesheet" href="ios-safe.css">#; s#<script src="runner.js">#<script src="ci-out.js"></script><script src="test-config.js"></script><script src="runner.js">#' www/index.html
+          grep -c "ios-safe.css" www/index.html; grep -c "viewport-fit=cover" www/index.html
           npm init -y >/dev/null
           npm i @capacitor/core@7 @capacitor/cli@7 @capacitor/ios@7
           npx cap init "MK AI Runner" com.mkai.runner --web-dir www
@@ -66,9 +75,9 @@ jobs:
           APP=$(find wrap/ios/build-sim -name 'App.app' -maxdepth 6 | head -1); echo "installing $APP" | tee -a "$S"
           xcrun simctl install $DEV "$APP"; echo "install exit=$?" | tee -a "$S"
           xcrun simctl launch $DEV com.mkai.runner 2>&1 | tee -a "$S"
-          for t in 10 30; do sleep $t; echo "t+$t listing:" | tee -a "$S"; xcrun simctl spawn $DEV launchctl list 2>&1 | grep -i mkai | tee -a "$S"; done
+          for t in 15 45; do sleep $t; echo "t+$t listing:" | tee -a "$S"; xcrun simctl spawn $DEV launchctl list 2>&1 | grep -i mkai | tee -a "$S"; done
           xcrun simctl io $DEV screenshot ios-shot.png
-          sips -Z 360 -s format jpeg -s formatOptions 55 ios-shot.png --out ios-small.jpg >/dev/null
+          sips -Z 900 -s format jpeg -s formatOptions 70 ios-shot.png --out ios-small.jpg >/dev/null
           { echo "<details><summary>ios-small.jpg base64</summary><pre>"; base64 -i ios-small.jpg; echo "</pre></details>"; } >> "$S"
           ls ~/Library/Logs/DiagnosticReports 2>&1 | head -5 | tee -a "$S"
           xcrun simctl spawn $DEV log show --last 2m --predicate 'process == "App" OR subsystem CONTAINS "mkai" OR eventMessage CONTAINS "MKAI"' 2>&1 | tail -25 | cut -c1-240 | tee -a "$S"
