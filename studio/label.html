@@ -1,0 +1,32 @@
+<!doctype html><html dir="rtl" lang="ar"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>MK AI Labeling (prototype)</title>
+<style>body{font-family:sans-serif;max-width:480px;margin:auto;padding:12px;overflow-wrap:anywhere}canvas{max-width:100%;touch-action:none;border:1px solid #888}button,select,input{font-size:16px;margin:2px}</style>
+<body><h3>MK AI – تحديد الأشياء (نموذج تجريبي)</h3>
+<p>الفئات (مفصولة بفاصلة): <input id="cls" value="cat,dog"></p>
+<p><input type="file" id="fi" accept="image/*" multiple></p>
+<p>الفئة الحالية: <select id="cur"></select> <button id="undo">تراجع</button> <button id="next">التالي</button> <button id="exp">تصدير الداتا (zip)</button> <button id="trn">درّب على الجهاز وصدّر التطبيق</button></p><p id="tst"></p>
+<p id="st" style="margin:4px 0">لسه ما اتحمّلتش صور</p><canvas id="cv"></canvas>
+<script src="jszip.min.js"></script>
+<script>
+const imgs=[];let idx=0;const cv=document.getElementById('cv'),g=cv.getContext('2d');
+const classes=()=>cls.value.split(',').map(s=>s.trim()).filter(Boolean);
+function fillSel(){cur.innerHTML=classes().map((c,i)=>`<option value="${i}">${c}</option>`).join('');}fillSel();cls.oninput=fillSel;
+function draw(){const it=imgs[idx];if(!it)return;cv.width=it.im.naturalWidth;cv.height=it.im.naturalHeight;g.drawImage(it.im,0,0);g.lineWidth=Math.max(2,cv.width/160);g.font=Math.max(14,cv.width/20)+'px sans-serif';g.direction='ltr';g.textAlign='left';
+ const cl=classes();it.boxes.concat(drag?[drag]:[]).forEach(b=>{g.strokeStyle='#e00';g.strokeRect(b[0],b[1],b[2]-b[0],b[3]-b[1]);g.fillStyle='#e00';g.fillText(cl[b[4]]||'?',b[0]+3,b[1]+g.lineWidth+14);});
+ st.textContent=`صورة ${idx+1} من ${imgs.length} - مربعات: ${it.boxes.length}`;}
+fi.onchange=async e=>{for(const f of e.target.files){const im=new Image();im.src=URL.createObjectURL(f);await im.decode();imgs.push({file:f,im,boxes:[]});}idx=0;draw();window.labelReady=true;};
+let drag=null,start=null;const pt=e=>{const r=cv.getBoundingClientRect();return[(e.clientX-r.left)*cv.width/r.width,(e.clientY-r.top)*cv.height/r.height];};
+cv.onpointerdown=e=>{start=pt(e);drag=null;cv.setPointerCapture(e.pointerId);};
+cv.onpointermove=e=>{if(!start)return;const p=pt(e);drag=[Math.min(start[0],p[0]),Math.min(start[1],p[1]),Math.max(start[0],p[0]),Math.max(start[1],p[1]),+cur.value];draw();};
+cv.onpointerup=e=>{if(drag&&drag[2]-drag[0]>4&&drag[3]-drag[1]>4)imgs[idx].boxes.push(drag.map((v,i)=>i<4?Math.round(v):v));start=null;drag=null;draw();};
+undo.onclick=()=>{imgs[idx]?.boxes.pop();draw();};next.onclick=()=>{if(idx<imgs.length-1){idx++;draw();}};
+async function mk(){const z=new JSZip();const meta={classes:classes(),images:[]};
+ for(const [i,it] of imgs.entries()){const name=`images/${i}.jpg`;z.file(name,await it.file.arrayBuffer());meta.images.push({file:name,width:it.im.naturalWidth,height:it.im.naturalHeight,boxes:it.boxes});}
+ z.file('annotations.json',JSON.stringify(meta));return z.generateAsync({type:'blob'});}
+exp.onclick=async()=>{const blob=await mk();const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='mkai-dataset.zip';a.click();window.exported=true;};
+</script></body></html>
+<script>
+trn.onclick=async()=>{const r=await fetch('/api/train?epochs='+(new URLSearchParams(location.search).get('epochs')||12),{method:'POST',body:await mk()});if(r.status!==202){tst.textContent='السيرفر المحلي مش شغال أو فيه تدريب جاري ('+r.status+')';return;}
+ const t=setInterval(async()=>{const s=await (await fetch('/api/status')).json();tst.textContent='الحالة: '+s.state+' - '+(s.log.at(-1)||'');
+  if(s.state==='done'){clearInterval(t);const a=document.createElement('a');a.href='/api/result.zip';a.download='mkai-detector-app.zip';a.click();window.trainDone=true;}
+  if(s.state==='error'){clearInterval(t);window.trainError=true;}},1000);};
+</script>
