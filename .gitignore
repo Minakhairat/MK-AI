@@ -1,0 +1,16 @@
+node_modules/
+venv/
+build/
+out/
+data/
+gen/
+studio/vendor/
+studio/base/
+studio/template/
+studio/tf.min.js
+studio/jszip.min.js
+*.onnx
+*.pt
+*.pth
+*.zip
+__pycache__/
