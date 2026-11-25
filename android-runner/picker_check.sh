@@ -23,5 +23,7 @@ xy=$(tapnode 'pick-test') && { echo "file entry at $xy" >> $E; adb shell input t
 sleep 12; adb exec-out screencap -p > picker-2.png
 adb logcat -d | grep -E 'MKAI_|Capacitor/Console' | tail -20 | sed 's/^.*Console: //' >> $E
 cat $E >> "${GITHUB_STEP_SUMMARY:-/dev/null}"
+for f in picker-1.png picker-2.png; do [ -s $f ] && { echo "<details><summary>$f base64</summary><pre>"; base64 -w0 $f; echo "</pre></details>"; } >> "${GITHUB_STEP_SUMMARY:-/dev/null}"; done
+{ echo '<details><summary>picker ui dump</summary><pre>'; head -c 20000 picker-picker-ui.xml | sed 's/&/\&amp;/g;s/</\&lt;/g'; echo '</pre></details>'; } >> "${GITHUB_STEP_SUMMARY:-/dev/null}"
 grep -q 'MKAI_RUNNER_IMPORTED' $E && echo PICKER_IMPORT_OK && exit 0
 echo PICKER_IMPORT_NOT_CONFIRMED; exit 0
