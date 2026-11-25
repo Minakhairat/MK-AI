@@ -11,4 +11,14 @@ window.classify=async el=>{const z=224,t=document.createElement('canvas');t.widt
  const m=Math.max(...l),e=Array.from(l,v=>Math.exp(v-m)),su=e.reduce((a,b)=>a+b);return e.map(v=>v/su);};
 st.textContent='جاهز (يعمل على الجهاز بدون إنترنت)';window.ready=true;
 f.onchange=()=>{const u=URL.createObjectURL(f.files[0]);im.onload=async()=>{const p=await classify(im);res.textContent=H.classes.map((c,i)=>c+': '+(p[i]*100).toFixed(1)+'%').join('\n');window.lastPred=p};im.src=u;};
+// live camera (needs HTTPS or localhost; the browser asks permission)
+{const b=document.getElementById('camb'),v=document.getElementById('v'),n=document.getElementById('camn');let stream=null,run=false;
+ const stop=()=>{run=false;if(stream)stream.getTracks().forEach(t=>t.stop());stream=null;v.style.display='none';b.textContent='تشغيل الكاميرا مباشر';};
+ b.onclick=async()=>{if(stream){stop();return;}
+  if(!window.isSecureContext||!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){n.textContent='الكاميرا تحتاج فتح التطبيق من عنوان HTTPS أو من localhost، مش من ملف مفتوح مباشرة.';return;}
+  try{n.textContent='';stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'}},audio:false});}catch(e){stream=null;n.textContent='تعذّر تشغيل الكاميرا: '+(e&&e.name?e.name:e);return;}
+  v.srcObject=stream;await v.play();v.style.display='block';b.textContent='إيقاف الكاميرا';run=true;
+  while(run){await (async v=>{if(!v.videoWidth)return;const p=await classify(v);res.textContent=H.classes.map((c,i)=>c+': '+(p[i]*100).toFixed(1)+'%').join('\n');window.lastPred=p;})(v);await new Promise(r=>setTimeout(r,50));}};
+ window.camStop=stop;}
+
 })();
