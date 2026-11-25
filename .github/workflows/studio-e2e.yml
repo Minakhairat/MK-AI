@@ -1,0 +1,32 @@
+name: studio-e2e
+on:
+  workflow_dispatch:
+  push:
+    paths: ['studio-e2e.version']
+concurrency:
+  group: studio-e2e
+  cancel-in-progress: true
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.10' }
+      - name: Install and assets
+        run: |
+          pip install torch==2.6.0 torchvision==0.21.0 --index-url https://download.pytorch.org/whl/cpu
+          pip install -r requirements.txt pyarrow huggingface_hub
+          npm install && npm run setup
+      - name: Real photos subset (Oxford-IIIT Pet, CC BY-SA 4.0), downloaded in CI only
+        run: python trainer/oxford_subset.py
+      - name: Studio trains and exports in headless Chrome, Runner imports that export and classifies held-out photos
+        run: |
+          mkdir -p build/runner-www build/pt && cp android-runner/www/* build/runner-www/ && cp studio/jszip.min.js studio/ort.min.js studio/ort-wasm-simd-threaded*.mjs studio/ort-wasm-simd-threaded*.wasm build/runner-www/
+          (cd build/pt && npm init -y >/dev/null && npm i puppeteer-core >/dev/null)
+          cp android-runner/studio_e2e.mjs build/pt/
+          echo '### Studio-generated real-photo classifier export through the Runner (headless Chrome, CI). Software benchmark.' >> "$GITHUB_STEP_SUMMARY"
+          node build/pt/studio_e2e.mjs "$PWD/studio" "$PWD/build/runner-www" "$PWD/build/oxs"
