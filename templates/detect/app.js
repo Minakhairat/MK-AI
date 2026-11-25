@@ -1,7 +1,8 @@
 (async()=>{try{
 if('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(()=>{});
 ort.env.wasm.numThreads=1;ort.env.wasm.proxy=false;ort.env.wasm.wasmPaths='./';
-const M=await (await fetch('model.json')).json();const S=await ort.InferenceSession.create('detector.onnx',{executionProviders:['wasm']});
+const M=await (await fetch('model.json')).json();// read the model from the offline cache directly when present: streaming it through the service worker crashed the page in Chrome (headless, Linux)
+const cm=('caches' in self)?await caches.match('detector.onnx'):null;const mb=new Uint8Array(await (cm?cm:await fetch('detector.onnx')).arrayBuffer());const S=await ort.InferenceSession.create(mb,{executionProviders:['wasm']});
 const z=M.size;const cols=['#e00','#07f','#0a0','#e90'];
 window.detect=async im=>{const t=document.createElement('canvas');t.width=t.height=z;const g=t.getContext('2d');g.drawImage(im,0,0,z,z);const d=g.getImageData(0,0,z,z).data;const f=new Float32Array(3*z*z);
  for(let i=0;i<z*z;i++){f[i]=d[i*4]/255;f[z*z+i]=d[i*4+1]/255;f[2*z*z+i]=d[i*4+2]/255;}
