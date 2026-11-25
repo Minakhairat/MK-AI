@@ -1,0 +1,22 @@
+name: verify-release-apk
+on:
+  workflow_dispatch:
+  push:
+    paths: ['verify-release.version']
+permissions:
+  contents: read
+defaults:
+  run:
+    shell: bash
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download the public release asset anonymously and hash it
+        run: |
+          URL=https://github.com/Minakhairat/MK-AI/releases/download/runner-android-experimental-1/MK-AI-Runner-android-debug.apk
+          curl -fsSL --retry 3 -o dl.apk "$URL"
+          GOT=$(sha256sum dl.apk | cut -d' ' -f1); SIZE=$(stat -c %s dl.apk)
+          echo "VERIFY sha256=$GOT size=$SIZE" | tee -a "$GITHUB_STEP_SUMMARY"
+          test "$GOT" = 87d14075ec8c804a73b50962e54014b2b7caa4fdf69995f36b7d54dd4cb607e8 && test "$SIZE" = 17436719
+          echo "VERIFY MATCH" | tee -a "$GITHUB_STEP_SUMMARY"
