@@ -1,7 +1,11 @@
 name: windows-selftest
 on:
-  push:
   workflow_dispatch:
+  push:
+    paths: ['windows.version']
+concurrency:
+  group: windows-selftest
+  cancel-in-progress: true
 jobs:
   selftest:
     runs-on: windows-latest
@@ -17,12 +21,20 @@ jobs:
           python -m pip install --upgrade pip
           pip install torch==2.6.0 torchvision==0.21.0 --index-url https://download.pytorch.org/whl/cpu
           pip install -r requirements.txt
-      - name: Node dependencies and assets
+      - name: Launcher check mode (npm install, asset setup, file checks)
+        shell: cmd
         run: |
-          npm install
-          npm run setup
-      - name: Check generated studio files exist
+          set MKAI_CHECK=1
+          call start-windows.bat
+      - name: Local server answers a status probe
+        shell: pwsh
         run: |
-          python -c "import os;assert all(os.path.exists(p) for p in ['studio/tf.min.js','studio/jszip.min.js','studio/base/model.json','studio/template/sw.js','build/detect-template/ort.min.js'])"
+          $p = Start-Process python -ArgumentList 'server/studio_server.py','8000' -PassThru -NoNewWindow
+          Start-Sleep 4
+          $r = Invoke-RestMethod http://127.0.0.1:8000/api/status
+          if ($r.state -ne 'idle') { throw "unexpected state $($r.state)" }
+          $h = Invoke-WebRequest http://127.0.0.1:8000/ -UseBasicParsing
+          if ($h.StatusCode -ne 200) { throw 'studio page not served' }
+          Stop-Process $p
       - name: Detector pipeline self-test (synthetic data, 1 epoch, ONNX export)
         run: python trainer/selftest.py
