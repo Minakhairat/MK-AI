@@ -1,0 +1,1 @@
+{"name":"mk-ai","version":"0.0.1","private":true,"description":"MK AI prototype: local image-classification and object-detection trainer that generates a browser app","scripts":{"setup":"node scripts/setup_assets.mjs","studio":"python server/studio_server.py 8000"},"dependencies":{"@tensorflow/tfjs":"4.22.0","onnxruntime-web":"1.31.1","jszip":"3.10.1"}}
