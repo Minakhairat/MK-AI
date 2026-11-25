@@ -25,13 +25,20 @@ jobs:
         run: python trainer/prep_bloodcell.py
       - name: Train with the Studio detector pipeline (CPU)
         run: python trainer/rt_pipeline.py build/bc/ds.zip build/bc/out 12
-      - name: Held-out evaluation of the exported ONNX on the test photos
+      - name: Held-out evaluation of the exported ONNX (onnxruntime) on the test photos
         run: |
-          python trainer/eval_detect.py build/bc/out/app/detector.onnx build/bc/out/app/model.json build/bc/test | tee build/bc/eval.txt
-          { echo '### Held-out multiclass detection (Blood Cell Detection dataset, 3 classes, test split never trained on)'; echo '```'; cat build/bc/eval.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          python trainer/eval_detect.py onnx build/bc/out/app/detector.onnx build/bc/out/app/model.json build/bc/test | tee build/bc/eval.txt
+      - name: Same photos through the trusted runner in headless Chrome (the app code path)
+        run: |
+          mkdir -p build/runner-www && cp android-runner/www/* build/runner-www/ && cp studio/jszip.min.js studio/ort.min.js studio/ort-wasm-simd-threaded*.mjs studio/ort-wasm-simd-threaded*.wasm build/runner-www/
+          mkdir -p build/pt && cd build/pt && npm init -y >/dev/null && npm i puppeteer-core >/dev/null && cd ../..
+          cp android-runner/parity_test.mjs build/pt/ && (cd build/pt && node parity_test.mjs ../runner-www ../bc/out/app.zip ../bc/test ../bc/dets.json)
+          python trainer/eval_detect.py dets build/bc/dets.json build/bc/out/app/model.json build/bc/test | tee build/bc/eval-runner.txt
+          { echo '### Held-out multiclass detection (Blood Cell Detection photos, test split never trained on). Software benchmark only, not a medical or diagnostic claim.'; echo '#### exported ONNX via onnxruntime'; echo '```'; cat build/bc/eval.txt; echo '```'; echo '#### same photos through the trusted runner (headless Chrome)'; echo '```'; cat build/bc/eval-runner.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@v4
         with:
           name: realphoto-detect-export
           path: |
             build/bc/out/app.zip
             build/bc/eval.txt
+            build/bc/eval-runner.txt
