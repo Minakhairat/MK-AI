@@ -27,7 +27,7 @@ jobs:
           import zipfile,glob,re,os
           out=open(os.environ['GITHUB_STEP_SUMMARY'],'w')
           pat=re.compile(r'(^|/)(LICEN[CS]E|COPYING|NOTICE|THIRD[-_ ]?PARTY|LICENSES?)[^/]*$',re.I)
-          kw=re.compile(r'(GPL|LGPL|AGPL|GNU |MPL|Mozilla|Intel|OpenBLAS|libgfortran|gcc|exception|dual[- ]licen|OR |non-?commercial)',re.I)
+          kw=re.compile(r'(GPL|LGPL|AGPL|GNU |Mozilla|MPL-|Intel|libgfortran|libquadmath|runtime library exception|dual[- ]licen|non-?commercial|Name: )',re.I)
           for w in sorted(glob.glob('w/*.whl')):
               z=zipfile.ZipFile(w)
               out.write('\n## %s (%d MB)\n'%(os.path.basename(w),os.path.getsize(w)//1000000))
@@ -36,10 +36,13 @@ jobs:
               bundled=[n for n in z.namelist() if re.search(r'\.libs/|/lib/.*\.dll$|\.dll$',n)]
               out.write('bundled binaries: %s\n'%', '.join(sorted(set(os.path.basename(n) for n in bundled))[:40]))
               for n in names:
-                  t=z.read(n).decode('utf-8','ignore')
-                  out.write('\n### %s head\n```\n%s\n```\n'%(n,'\n'.join(t.split('\n')[:25])))
-                  hits=[l.strip()[:200] for l in t.split('\n') if kw.search(l)][:40]
-                  out.write('keyword lines (triage only):\n```\n%s\n```\n'%'\n'.join(hits))
+                  t=z.read(n).decode('utf-8','ignore');L=t.split('\n')
+                  out.write('\n### %s (%d lines)\n'%(n,len(L)))
+                  hit=[i for i,l in enumerate(L) if kw.search(l)]
+                  shown=0
+                  for i in hit:
+                      if shown>=25: break
+                      out.write('L%d: %s\n'%(i+1,L[i].strip()[:220]));shown+=1
           out.close()
           PYEOF
           wc -c "$GITHUB_STEP_SUMMARY"
