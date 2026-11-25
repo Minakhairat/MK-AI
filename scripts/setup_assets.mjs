@@ -19,4 +19,5 @@ fs.writeFileSync(T+'/files.json',JSON.stringify(files));
 const D='build/detect-template';fs.rmSync(D,{recursive:true,force:true});fs.mkdirSync(D,{recursive:true});
 for(const f of fs.readdirSync('templates/detect'))cp('templates/detect/'+f,D+'/'+f);
 for(const f of ['ort.min.js','ort-wasm-simd-threaded.wasm','ort-wasm-simd-threaded.mjs','ort-wasm-simd-threaded.jsep.wasm','ort-wasm-simd-threaded.jsep.mjs'])cp('node_modules/onnxruntime-web/dist/'+f,D+'/'+f);
+cp('templates/detect/NOTICE-MODEL.txt',D+'/NOTICE-MODEL.txt');cp('studio/base/LICENSE-APACHE-2.0.txt',D+'/LICENSE-APACHE-2.0.txt');
 console.log('assets ready');
