@@ -1,0 +1,49 @@
+name: release-runner-apk
+on:
+  workflow_dispatch:
+  push:
+    paths: ['release.version']
+concurrency:
+  group: release-runner-apk
+  cancel-in-progress: false
+permissions:
+  contents: write
+  actions: read
+defaults:
+  run:
+    shell: bash
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: mkai-runner-debug-apk
+          run-id: 45641224354
+          github-token: ${{ github.token }}
+          path: dl
+      - name: Verify the exact validated bytes, then publish the APK only
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          EXPECT=87d14075ec8c804a73b50962e54014b2b7caa4fdf69995f36b7d54dd4cb607e8
+          ls -la dl
+          test "$(ls dl | wc -l)" = 1 || { echo 'unexpected files in artifact'; exit 1; }
+          GOT=$(sha256sum dl/runner-clean.apk | cut -d' ' -f1)
+          SIZE=$(stat -c %s dl/runner-clean.apk)
+          echo "sha256=$GOT size=$SIZE"
+          test "$GOT" = "$EXPECT" && test "$SIZE" = 17436719 || { echo 'HASH OR SIZE MISMATCH, not publishing'; exit 1; }
+          cp dl/runner-clean.apk MK-AI-Runner-android-debug.apk
+          cat > notes.md <<'NOTES'
+          MK AI Runner، نسخة Android تجريبية بتوقيع Debug، لتشغيل النماذج المُصدَّرة من MK AI. اختُبرت على محاكي Android، ولم تُختبر على هاتف حقيقي. لا تشمل نماذج أو بيانات تدريب، وليست النسخة النهائية.
+
+          التثبيت يحتاج السماح بالتثبيت من خارج المتجر.
+
+          تنبيه: التطبيق موقّع بمفتاح Debug اتولّد في بناء CI. أي نسخة جاية بتوقيع مختلف لازم تحذف القديمة الأول، وده ممكن يمسح النماذج المحفوظة جواها.
+
+          SHA-256: 87d14075ec8c804a73b50962e54014b2b7caa4fdf69995f36b7d54dd4cb607e8
+          الحجم: 17436719 بايت
+          المصدر: https://github.com/Minakhairat/MK-AI/commit/c04ac46f172eeda56c2a2d45df99131e00daf024 (بناء https://github.com/Minakhairat/MK-AI/actions/runs/45641224354)
+          NOTES
+          gh release create runner-android-experimental-1 MK-AI-Runner-android-debug.apk --repo "$GITHUB_REPOSITORY" --title "MK AI Runner (Android, experimental, debug-signed)" --notes-file notes.md --prerelease --target "$GITHUB_SHA"
+          gh release view runner-android-experimental-1 --repo "$GITHUB_REPOSITORY" --json url,assets,isPrerelease,tagName | tee -a "$GITHUB_STEP_SUMMARY"
