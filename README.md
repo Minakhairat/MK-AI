@@ -12,7 +12,10 @@ One page, five steps: project type, data (class cards, or box labeling on a canv
 ## Tested so far (and what is not)
 - Linux, headless Chrome, small sets: classify flow through the UI (train, test a held-out photo, export); detect flow through the UI (mouse-drawn boxes, local trainer, 2-epoch run, exported app loads and runs inference). No accuracy claim: the test photos are unverified Wikimedia images and synthetic collages.
 - Windows: a GitHub Actions run on a Windows runner executes `start-windows.bat` in check mode (npm install, asset setup, file checks), starts the local server and probes it, then runs the detector pipeline self-test. See the Actions tab for the latest result. This proves the scripts run on a Windows runner. It does not prove a desktop install, a browser on Windows, the camera or any phone.
-- Not tested: real phones/tablets (Android, iPhone), iOS offline storage limits, camera capture, large photo sets, real labeled data quality, GPU training, a one-click Windows installer.
+- Detector on Windows, real photos: a GitHub Actions run on a Windows runner trained the detector (CPU, 12 epochs) on a public blood-cell photo set, exported ONNX and ran the exported model through the Runner import in headless Chrome. This is a software benchmark only: no medical claim, the data set's Hugging Face "Public Domain" label has not been verified, and neither the photos nor any trained weights are published.
+- Android: an experimental, debug-signed Runner APK is published as a GitHub pre-release (see "Android and iPhone" below). It was tested on an Android emulator in CI, not on a phone.
+- iPhone: only a simulator build in CI (unsigned, no IPA, no iPhone). Later simulator runs froze on GitHub's macOS runners, so no iOS result is claimed beyond the earlier simulator run.
+- Not tested: real phones/tablets (Android, iPhone), iOS offline storage limits, camera capture on a real device, large photo sets, real labeled data quality, GPU training, a consumer Windows 10/11 PC, a Windows installer.
 
 ## Run it on Windows
 Needs Python 3.10, 3.11 or 3.12 (the launcher refuses other versions; PyTorch 2.6 CPU wheels exist for Windows up to 3.13, but 3.13 is untested here; CI runs 3.10 and 3.12 on a Windows runner and 3.11 is not run) and Node.js 22+. Double-click `start-windows.bat`: it creates a virtual environment, installs CPU PyTorch and the Python packages, runs `npm install` and `npm run setup`, starts the local server on 127.0.0.1:8000 and opens the page. First run downloads PyTorch (CPU build), Python and npm packages and a pretrained model; it is a large download and asks before it starts. This launcher has not been run on a real Windows desktop yet.
@@ -47,7 +50,15 @@ https://minakhairat.github.io/MK-AI/ is built by `.github/workflows/pages.yml` w
 ## Live camera and installing the exported app
 - Each exported app has a "turn on the camera" button (live classify or live detect). Browsers only allow the camera on HTTPS pages or on `localhost`; opening `index.html` from a file, or from a plain `http://` address on another machine, shows a message instead. Tested here only with Chrome's fake camera device on Linux. Not tested with a real phone camera.
 - Hosting the exported app over HTTPS is a separate step that is not decided yet. Nothing is published automatically.
-- The exported app is a web app with a manifest and icons, so browsers can offer to install it. Android APK and iOS packaging are being researched; none is built yet.
+- The exported app is a web app with a manifest and icons, so browsers can offer to install it. Android and iPhone packaging: see "Android and iPhone" below.
+
+## Android and iPhone
+- Android: pre-release https://github.com/Minakhairat/MK-AI/releases/tag/runner-android-experimental-1, file `MK-AI-Runner-android-debug.apk` (sha256 87d14075ec8c804a73b50962e54014b2b7caa4fdf69995f36b7d54dd4cb607e8, 17,436,719 bytes). It is signed with a debug key, not a release certificate: a build signed with a different key needs the app uninstalled first, which can delete saved models. Tested on an Android emulator in CI only. Not tested on a phone. Play Store distribution is not set up.
+- iPhone: no installable iPhone app exists. The only iOS output is an unsigned simulator build used in CI. Installing on a real iPhone needs Apple signing, which is not set up and not decided.
+
+## Windows download
+The repository is usable by cloning it or using "Download ZIP" and following "Run it on Windows". No packaged Windows download is published.
 
 ## Memory
 The training memory need has not been measured on a reference machine. In a 2 GB, 1 CPU Linux sandbox the trainer used about 1.2 GB resident memory while a browser was also open. Treat that as one observation, not a requirement. If training stops, the Studio shows the trainer's exit code and last output lines.
+
