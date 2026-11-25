@@ -30,3 +30,11 @@ The server binds to 127.0.0.1 only. Images are processed on your own computer.
 - An earlier experiment used torchvision SSDLite weights. They have no stated license and are not used here.
 - Do not use Ultralytics YOLO code or weights with this project without reading their AGPL-3.0 / enterprise terms.
 - JS libraries are installed from npm: TensorFlow.js (Apache-2.0), onnxruntime-web (MIT), JSZip (MIT OR GPL-3.0-or-later).
+
+## Hosted demo (GitHub Pages)
+
+https://minakhairat.github.io/MK-AI/ is built by `.github/workflows/pages.yml`. It publishes no model weights. The classify Studio there loads the MobileNet base model directly from Google's tfjs-models bucket in the visitor's browser; the license of those weight files is not confirmed. Exports made on the hosted page do not contain the weights: the exported app fetches them from the same bucket on first open and then keeps them in its own cache. Only the exports made by a local setup (`npm run setup`) bundle a downloaded copy for the user's own machine.
+
+Every exported app gets its own random id used for its cache name and manifest id, so several generated apps served from one origin do not share a cache. Tested with three exports on one origin (two hosted-mode, one local-mode) in headless Chrome on Linux. Not tested: other MK apps, real phones.
+
+Detector training is not available on the hosted page. It needs the local Python trainer (`python server/studio_server.py 8000`); the labeling page disables its train button and says so when no local server answers.
