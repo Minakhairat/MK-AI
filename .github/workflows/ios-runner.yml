@@ -43,14 +43,19 @@ jobs:
           cd wrap/ios/App
           S="$GITHUB_STEP_SUMMARY"
           xcodebuild -version | tee -a "$S"
-          RC=0; xcodebuild -project App.xcodeproj -scheme App -configuration Debug -sdk iphonesimulator -derivedDataPath ../build-sim CODE_SIGNING_ALLOWED=NO build > ../sim-build.log 2>&1 || RC=$?; echo "simulator xcodebuild exit=$RC" | tee -a "$S"
+          ls -d *.xcworkspace Pods 2>&1 | tee -a "$S"; (xcodebuild -workspace App.xcworkspace -list 2>&1 | head -25) | tee -a "$S"
+          RC=0; xcodebuild -workspace App.xcworkspace -scheme App -configuration Debug -sdk iphonesimulator -derivedDataPath ../build-sim CODE_SIGNING_ALLOWED=NO build > ../sim-build.log 2>&1 || RC=$?; echo "simulator xcodebuild exit=$RC" | tee -a "$S"
           { grep -E "error:|BUILD (SUCCEEDED|FAILED)|\*\* " ../sim-build.log | head -15; echo '--- last lines'; tail -12 ../sim-build.log; } 2>&1 | cut -c1-300 | tee -a "$S"
-          RC=0; xcodebuild -project App.xcodeproj -scheme App -configuration Release -sdk iphoneos -derivedDataPath ../build-dev CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO build > ../dev-build.log 2>&1 || RC=$?; echo "device xcodebuild exit=$RC" | tee -a "$S"
+          RC=0; xcodebuild -workspace App.xcworkspace -scheme App -configuration Release -sdk iphoneos -derivedDataPath ../build-dev CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO build > ../dev-build.log 2>&1 || RC=$?; echo "device xcodebuild exit=$RC" | tee -a "$S"
           { grep -E "error:|BUILD (SUCCEEDED|FAILED)|\*\* " ../dev-build.log | head -15; echo '--- last lines'; tail -12 ../dev-build.log; } 2>&1 | cut -c1-300 | tee -a "$S"
           echo '--- .app bundles found' | tee -a "$S"; find ../build-sim ../build-dev -name '*.app' -maxdepth 6 | tee -a "$S"
           for A in $(find ../build-dev -name 'App.app' -maxdepth 6 | head -1) $(find ../build-sim -name 'App.app' -maxdepth 6 | head -1); do
             { echo "--- $A"; ls -la "$A" | head -20; file "$A/App"; lipo -info "$A/App"; plutil -p "$A/Info.plist" | grep -E 'CFBundleIdentifier|CFBundleExecutable|MinimumOSVersion|DTPlatformName'; codesign -dv "$A" 2>&1 | head -3; } 2>&1 | tee -a "$S"
           done
+      - name: Require real app binaries
+        run: |
+          cd wrap/ios
+          test -f build-sim/Build/Products/Debug-iphonesimulator/App.app/App && test -f build-dev/Build/Products/Release-iphoneos/App.app/App || { echo 'NO APP EXECUTABLE: iOS build failed' | tee -a "$GITHUB_STEP_SUMMARY"; exit 1; }
       - name: Run in the iOS Simulator and screenshot
         run: |
           set +e
