@@ -6,6 +6,9 @@ on:
 concurrency:
   group: android-runner
   cancel-in-progress: true
+defaults:
+  run:
+    shell: bash
 jobs:
   apk:
     runs-on: ubuntu-latest
@@ -65,7 +68,7 @@ jobs:
           target: google_apis
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back virtualscene
-          script: bash -c 'APK=apks/runner-test.apk bash android-runner/emulator_check.sh; r=$?; APK=apks/runner-clean.apk ZIP=build/test-detect.zip bash android-runner/picker_check.sh; exit $r'
+          script: bash -c 'APK=apks/runner-test.apk bash android-runner/emulator_check.sh; r=$?; APK=apks/runner-clean.apk ZIP=build/test-detect.zip bash android-runner/picker_check.sh; q=$?; echo emulator_check=$r picker_check=$q; [ $r -eq 0 ] && [ $q -eq 0 ]'
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -78,5 +81,6 @@ jobs:
             picker-1.png
             picker-2.png
             picker-evidence.txt
+            picker_logcat_full.txt
             picker-picker-ui.xml
           if-no-files-found: ignore
