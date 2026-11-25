@@ -1,0 +1,88 @@
+name: windows-bootstrap
+on:
+  workflow_dispatch:
+  push:
+    paths: ['windows-bootstrap.version']
+concurrency:
+  group: windows-bootstrap
+  cancel-in-progress: true
+permissions:
+  contents: read
+defaults:
+  run:
+    shell: bash
+jobs:
+  starter:
+    runs-on: windows-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12' }
+      - name: Prepare studio assets and the pinned version list
+        run: |
+          pip install torch==2.6.0 torchvision==0.21.0 --index-url https://download.pytorch.org/whl/cpu
+          pip install -r requirements.txt
+          npm install && npm run setup
+          python -m pip freeze | grep -v '^torch\|^torchvision\| @ ' > constraints.txt
+          wc -l constraints.txt
+      - name: Assemble the small starter (MK AI files only, no third-party binaries)
+        run: |
+          set -e
+          P=pkg/MK-AI
+          mkdir -p $P/build $P/windows-bootstrap
+          cp -r server trainer studio $P/
+          cp -r build/detect-template $P/build/
+          cp requirements.txt constraints.txt $P/
+          cp windows-bootstrap/setup.ps1 windows-bootstrap/README-NOTICES.txt $P/windows-bootstrap/
+          cp windows-bootstrap/MK-AI.bat $P/
+          echo "--- binaries inside the starter:"; find $P -type f \( -name '*.dll' -o -name '*.exe' -o -name '*.pyd' -o -name '*.onnx' -o -name '*.pt' -o -name '*.safetensors' \) -printf '%s %p\n' | tee /tmp/bins.txt
+          if grep -i 'dll\|exe\|pyd\|\.pt\|safetensors' /tmp/bins.txt; then echo 'AUDIT FAIL: third-party binary or model in starter'; exit 1; fi
+          if find $P -type f \( -name '*.jpg' -o -name '*.jpeg' -o -name '*.zip' \) | grep -i 'blood\|oxford\|app\.zip\|ds\.zip'; then echo 'AUDIT FAIL: dataset'; exit 1; fi
+          cd pkg && 7z a -tzip -mx=5 ../MK-AI-Windows-starter.zip MK-AI >/dev/null
+          cd ..
+          { echo "### Windows starter (private CI build, NOT uploaded or published)"; echo "zip bytes: $(stat -c %s MK-AI-Windows-starter.zip)"; echo "unpacked bytes: $(du -sb pkg/MK-AI | cut -f1)"; echo "sha256: $(sha256sum MK-AI-Windows-starter.zip | cut -d' ' -f1)"; echo "files: $(find pkg -type f | wc -l)"; } | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Clean-machine test (fresh folder, PATH limited to System32, setup downloads from the official sources)
+        shell: pwsh
+        run: |
+          Remove-Item -Recurse -Force pkg
+          7z x -y -oC:\clean MK-AI-Windows-starter.zip | Out-Null
+          $root = 'C:\clean\MK-AI'
+          $sys = "$env:SystemRoot\System32"
+          # missing-runtime branch (forced; CI cannot uninstall the runtime): must stop with code 2 and print the Microsoft URL
+          $env:MKAI_FORCE_NO_VCRT = '1'; $env:MKAI_NONINTERACTIVE = '1'; $env:MKAI_NOBROWSER = '1'
+          $neg = cmd /c "set PATH=$sys&& cd /d $root && MK-AI.bat" 2>&1
+          $negcode = $LASTEXITCODE
+          Write-Host ($neg -join "`n"); Write-Host "missing-runtime branch exit code: $negcode"
+          if ($negcode -ne 2 -or (($neg -join ' ') -notmatch 'aka.ms/vc14/vc_redist.x64.exe')) { throw 'missing-runtime branch did not behave' }
+          if (Test-Path "$root\python\python.exe") { throw 'python downloaded before the prerequisite check' }
+          Remove-Item Env:MKAI_FORCE_NO_VCRT
+          # first run: the launcher itself performs the whole download, then starts the server
+          $sw = [Diagnostics.Stopwatch]::StartNew()
+          $p = Start-Process cmd -ArgumentList '/c', "set PATH=$sys&& cd /d $root && MK-AI.bat > C:\clean\launcher.log 2>&1" -PassThru -WindowStyle Hidden
+          $ok = $false
+          for ($i = 0; $i -lt 300; $i++) {
+            Start-Sleep 6
+            try { $r = Invoke-RestMethod http://127.0.0.1:8000/api/status -TimeoutSec 5; if ($r.state -eq 'idle') { $ok = $true; break } } catch {}
+            if ($p.HasExited) { break }
+          }
+          $secs = [int]$sw.Elapsed.TotalSeconds
+          Get-Content C:\clean\launcher.log -Tail 25
+          if (-not $ok) { throw 'first-run setup/launch did not reach a serving Studio' }
+          Write-Host "FIRST RUN OK: setup plus launch took $secs seconds on this CI runner (not a consumer-PC estimate)"
+          Add-Content $env:GITHUB_STEP_SUMMARY "first run (all downloads + launch) on the CI runner: $secs s"
+          $h = Invoke-WebRequest http://127.0.0.1:8000/ -UseBasicParsing
+          if ($h.StatusCode -ne 200) { throw 'studio page not served' }
+          taskkill /T /F /PID $p.Id | Out-Null
+          $sz = (Get-ChildItem $root -Recurse -File | Measure-Object Length -Sum).Sum
+          Add-Content $env:GITHUB_STEP_SUMMARY "folder size after setup: $sz bytes"
+          Get-ChildItem "$root\python\Lib\site-packages" -Directory -Filter '*.dist-info' | Measure-Object | ForEach-Object { Add-Content $env:GITHUB_STEP_SUMMARY "installed packages: $($_.Count)" }
+          # second run must work with outbound blocked for the downloaded python (setup not repeated)
+          New-NetFirewallRule -DisplayName 'mkai-block-python' -Direction Outbound -Program "$root\python\python.exe" -Action Block | Out-Null
+          $env:HF_HUB_CACHE = "$root\hf"; $env:HF_HUB_OFFLINE = '1'; $env:PYTHONNOUSERSITE = '1'; $env:PATH = $sys
+          Set-Location $root
+          & "$root\python\python.exe" trainer\selftest.py
+          if ($LASTEXITCODE -ne 0) { throw "selftest exit $LASTEXITCODE" }
+          Write-Host 'offline detector self-test OK after setup (synthetic data, pipeline check only)'
