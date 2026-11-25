@@ -6,6 +6,9 @@ on:
 concurrency:
   group: realphoto-detect
   cancel-in-progress: true
+defaults:
+  run:
+    shell: bash
 jobs:
   train:
     runs-on: ubuntu-latest
