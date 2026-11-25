@@ -37,27 +37,35 @@ jobs:
           python ../android-runner/ios_icon.py ios/App/App/Assets.xcassets/AppIcon.appiconset/AppIcon-512@2x.png ../brand/icons.json || true
           ls ios/App/App/Assets.xcassets/AppIcon.appiconset
           npx cap sync ios
-      - name: Build for the iOS Simulator and for a device, both with code signing OFF
+      - name: Build for the iOS Simulator and for a device, both with code signing OFF (real exit codes, errors printed)
         run: |
           cd wrap/ios/App
-          xcodebuild -version | tee -a "$GITHUB_STEP_SUMMARY"
-          xcodebuild -project App.xcodeproj -scheme App -configuration Debug -sdk iphonesimulator -derivedDataPath ../build-sim CODE_SIGNING_ALLOWED=NO build | tail -3 | tee -a "$GITHUB_STEP_SUMMARY"
-          xcodebuild -project App.xcodeproj -scheme App -configuration Release -sdk iphoneos -derivedDataPath ../build-dev CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO build | tail -3 | tee -a "$GITHUB_STEP_SUMMARY"
-          A=../build-dev/Build/Products/Release-iphoneos/App.app
-          { echo '--- unsigned device build evidence'; ls -la $A | head -12; file $A/App; lipo -info $A/App; plutil -p $A/Info.plist | grep -E 'CFBundleIdentifier|CFBundleName|NSCamera|MinimumOSVersion|DTPlatformName'; codesign -dv $A 2>&1 | head -3; ls $A/_CodeSignature 2>&1 | head -2; } 2>&1 | tee -a "$GITHUB_STEP_SUMMARY"
+          S="$GITHUB_STEP_SUMMARY"
+          xcodebuild -version | tee -a "$S"
+          xcodebuild -project App.xcodeproj -scheme App -configuration Debug -sdk iphonesimulator -derivedDataPath ../build-sim CODE_SIGNING_ALLOWED=NO build > ../sim-build.log 2>&1; echo "simulator xcodebuild exit=$?" | tee -a "$S"
+          grep -E "error:|BUILD (SUCCEEDED|FAILED)" ../sim-build.log | head -15 | tee -a "$S"
+          xcodebuild -project App.xcodeproj -scheme App -configuration Release -sdk iphoneos -derivedDataPath ../build-dev CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO build > ../dev-build.log 2>&1; echo "device xcodebuild exit=$?" | tee -a "$S"
+          grep -E "error:|BUILD (SUCCEEDED|FAILED)" ../dev-build.log | head -15 | tee -a "$S"
+          echo '--- .app bundles found' | tee -a "$S"; find ../build-sim ../build-dev -name '*.app' -maxdepth 6 | tee -a "$S"
+          for A in $(find ../build-dev -name 'App.app' -maxdepth 6 | head -1) $(find ../build-sim -name 'App.app' -maxdepth 6 | head -1); do
+            { echo "--- $A"; ls -la "$A" | head -20; file "$A/App"; lipo -info "$A/App"; plutil -p "$A/Info.plist" | grep -E 'CFBundleIdentifier|CFBundleExecutable|MinimumOSVersion|DTPlatformName'; codesign -dv "$A" 2>&1 | head -3; } 2>&1 | tee -a "$S"
+          done
       - name: Run in the iOS Simulator and screenshot
         run: |
           set +e
+          S="$GITHUB_STEP_SUMMARY"
           DEV=$(xcrun simctl list devices available | grep -m1 -E 'iPhone' | grep -oE '[0-9A-F-]{36}')
-          echo "simulator $DEV" | tee -a "$GITHUB_STEP_SUMMARY"
+          echo "simulator $DEV" | tee -a "$S"
           xcrun simctl boot $DEV; xcrun simctl bootstatus $DEV -b
-          xcrun simctl install $DEV wrap/ios/build-sim/Build/Products/Debug-iphonesimulator/App.app
-          xcrun simctl launch $DEV com.mkai.runner
-          sleep 45
+          APP=$(find wrap/ios/build-sim -name 'App.app' -maxdepth 6 | head -1); echo "installing $APP" | tee -a "$S"
+          xcrun simctl install $DEV "$APP"; echo "install exit=$?" | tee -a "$S"
+          xcrun simctl launch $DEV com.mkai.runner 2>&1 | tee -a "$S"
+          for t in 10 30; do sleep $t; echo "t+$t listing:" | tee -a "$S"; xcrun simctl spawn $DEV launchctl list 2>&1 | grep -i mkai | tee -a "$S"; done
           xcrun simctl io $DEV screenshot ios-shot.png
           sips -Z 360 -s format jpeg -s formatOptions 55 ios-shot.png --out ios-small.jpg >/dev/null
-          { echo "<details><summary>ios-small.jpg base64</summary><pre>"; base64 -i ios-small.jpg; echo "</pre></details>"; } >> "$GITHUB_STEP_SUMMARY"
-          ls -la ios-shot.png
+          { echo "<details><summary>ios-small.jpg base64</summary><pre>"; base64 -i ios-small.jpg; echo "</pre></details>"; } >> "$S"
+          ls ~/Library/Logs/DiagnosticReports 2>&1 | head -5 | tee -a "$S"
+          xcrun simctl spawn $DEV log show --last 2m --predicate 'process == "App" OR subsystem CONTAINS "mkai" OR eventMessage CONTAINS "MKAI"' 2>&1 | tail -25 | cut -c1-240 | tee -a "$S"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
