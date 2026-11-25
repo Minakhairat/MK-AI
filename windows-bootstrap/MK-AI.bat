@@ -4,7 +4,7 @@ if not exist "python\.libs-done" goto setup
 if not exist "hf\.backbone-done" goto setup
 goto run
 :setup
-powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0windows-bootstrap\setup.ps1"
+"%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File "%~dp0windows-bootstrap\setup.ps1"
 if errorlevel 1 (
   echo [MK AI] Setup did not finish. Read the messages above, fix the cause and run this file again.
   if not "%MKAI_NOBROWSER%"=="1" pause
