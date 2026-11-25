@@ -1,0 +1,94 @@
+name: windows-package
+on:
+  workflow_dispatch:
+  push:
+    paths: ['windows-package.version']
+concurrency:
+  group: windows-package
+  cancel-in-progress: true
+permissions:
+  contents: read
+defaults:
+  run:
+    shell: bash
+jobs:
+  package:
+    runs-on: windows-latest
+    timeout-minutes: 150
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12' }
+      - name: Prepare studio assets (Node is needed only here, not in the package)
+        run: |
+          npm install && npm run setup
+          pip install torch==2.6.0 torchvision==0.21.0 --index-url https://download.pytorch.org/whl/cpu
+          pip install -r requirements.txt
+      - name: Assemble the portable folder (embedded Python 3.12, offline packages, pretrained model)
+        run: |
+          set -e
+          P=pkg/MK-AI
+          mkdir -p $P $P/hf
+          curl -fsSL -o embed.zip https://www.python.org/ftp/python/3.12.10/python-3.12.10-embed-amd64.zip
+          7z x -y -o$P/python embed.zip >/dev/null
+          printf '%s\r\n' 'python312.zip' '.' 'Lib\site-packages' > $P/python/python312._pth
+          mkdir -p $P/python/Lib/site-packages
+          python -m pip install --target $P/python/Lib/site-packages torch==2.6.0 torchvision==0.21.0 --index-url https://download.pytorch.org/whl/cpu --extra-index-url https://pypi.org/simple
+          python -m pip install --target $P/python/Lib/site-packages -r requirements.txt
+          python -c "from huggingface_hub import snapshot_download as s; print(s('PekingU/rtdetr_r18vd', cache_dir='$P/hf'))"
+          mkdir -p $P/build
+          cp -r server trainer studio $P/
+          cp -r build/detect-template $P/build/
+          cat > $P/MK-AI.bat <<'BAT'
+          @echo off
+          cd /d "%~dp0"
+          set HF_HUB_CACHE=%~dp0hf
+          set HF_HUB_OFFLINE=1
+          set PYTHONNOUSERSITE=1
+          echo [MK AI] Starting. A browser tab opens at http://127.0.0.1:8000 . Keep this window open while you use MK AI. Close it to stop.
+          if not "%MKAI_NOBROWSER%"=="1" start "" http://127.0.0.1:8000
+          python\python.exe server\studio_server.py 8000
+          echo [MK AI] The server stopped. If this was not expected, read the messages above.
+          if not "%MKAI_NOBROWSER%"=="1" pause
+          BAT
+          sed -i 's/^          //; s/$/\r/' $P/MK-AI.bat
+          cat $P/MK-AI.bat | head -4
+          du -sh $P
+      - name: Zip (not uploaded anywhere)
+        run: |
+          cd pkg && 7z a -tzip -mx=5 ../MK-AI-Windows-portable.zip MK-AI >/dev/null
+          cd ..
+          ls -la MK-AI-Windows-portable.zip
+          { echo "### Portable package built (private CI build, NOT uploaded or published)"; echo "size bytes: $(stat -c %s MK-AI-Windows-portable.zip)"; echo "sha256: $(sha256sum MK-AI-Windows-portable.zip | cut -d' ' -f1)"; } | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Clean-machine test (fresh folder, no system Python or Node on PATH, offline model)
+        shell: pwsh
+        run: |
+          Remove-Item -Recurse -Force pkg
+          7z x -y -oC:\clean MK-AI-Windows-portable.zip | Out-Null
+          $root = 'C:\clean\MK-AI'
+          $sys = "$env:SystemRoot\System32"
+          # 1) the launcher starts the local Studio using only the bundled Python
+          $env:MKAI_NOBROWSER = '1'
+          $p = Start-Process cmd -ArgumentList '/c', "set PATH=$sys&& cd /d $root && MK-AI.bat > C:\clean\launcher.log 2>&1" -PassThru -WindowStyle Hidden
+          $ok = $false
+          for ($i = 0; $i -lt 45; $i++) {
+            Start-Sleep 4
+            try { $r = Invoke-RestMethod http://127.0.0.1:8000/api/status -TimeoutSec 5; if ($r.state -eq 'idle') { $ok = $true; break } } catch {}
+          }
+          Get-Content C:\clean\launcher.log -Tail 20
+          if (-not $ok) { throw 'bundled launcher did not serve' }
+          $h = Invoke-WebRequest http://127.0.0.1:8000/ -UseBasicParsing
+          if ($h.StatusCode -ne 200) { throw 'studio page not served' }
+          Write-Host 'launcher OK: status idle, page 200'
+          taskkill /T /F /PID $p.Id | Out-Null
+          # 2) the bundled Python trains and exports the detector offline (pretrained model from the package)
+          $env:HF_HUB_CACHE = "$root\hf"; $env:HF_HUB_OFFLINE = '1'; $env:PYTHONNOUSERSITE = '1'
+          $env:PATH = $sys
+          Set-Location $root
+          & "$root\python\python.exe" -c "import sys,torch,transformers,onnxruntime;print(sys.version);print('torch',torch.__version__)"
+          if ($LASTEXITCODE -ne 0) { throw "python import check exit $LASTEXITCODE" }
+          & "$root\python\python.exe" trainer\selftest.py
+          if ($LASTEXITCODE -ne 0) { throw "selftest exit $LASTEXITCODE" }
+          Write-Host 'clean-machine detector self-test OK (synthetic data, pipeline check only)'
