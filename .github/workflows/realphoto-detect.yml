@@ -32,9 +32,10 @@ jobs:
         run: |
           mkdir -p build/runner-www && cp android-runner/www/* build/runner-www/ && cp studio/jszip.min.js studio/ort.min.js studio/ort-wasm-simd-threaded*.mjs studio/ort-wasm-simd-threaded*.wasm build/runner-www/
           mkdir -p build/pt && cd build/pt && npm init -y >/dev/null && npm i puppeteer-core >/dev/null && cd ../..
-          cp android-runner/parity_test.mjs build/pt/ && (cd build/pt && node parity_test.mjs ../runner-www ../bc/out/app.zip ../bc/test ../bc/dets.json)
+          cp android-runner/parity_test.mjs android-runner/parity_diag.mjs build/pt/ && python trainer/pil_pixels.py build/bc/test 320 build/bc/pil320.bin && (cd build/pt && node parity_test.mjs ../runner-www ../bc/out/app.zip ../bc/test ../bc/dets.json ../bc/pil320.bin)
           python trainer/eval_detect.py dets build/bc/dets.json build/bc/out/app/model.json build/bc/test | tee build/bc/eval-runner.txt
-          { echo '### Held-out multiclass detection (Blood Cell Detection photos, test split never trained on). Software benchmark only, not a medical or diagnostic claim.'; echo '#### exported ONNX via onnxruntime'; echo '```'; cat build/bc/eval.txt; echo '```'; echo '#### same photos through the trusted runner (headless Chrome)'; echo '```'; cat build/bc/eval-runner.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          python trainer/eval_detect.py dets build/bc/dets_pil.json build/bc/out/app/model.json build/bc/test | tee build/bc/eval-pilpixels.txt
+          { echo '### Held-out multiclass detection (Blood Cell Detection photos, test split never trained on). Software benchmark only, not a medical or diagnostic claim.'; echo '#### exported ONNX via onnxruntime'; echo '```'; cat build/bc/eval.txt; echo '```'; echo '#### same photos through the trusted runner (headless Chrome)'; echo '```'; cat build/bc/eval-runner.txt; echo '```'; echo '#### PIL-resized pixels through onnxruntime-web (preprocessing removed)'; echo '```'; cat build/bc/eval-pilpixels.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@v4
         with:
           name: realphoto-detect-export
