@@ -46,6 +46,7 @@ jobs:
           if ($out -notmatch 'First run' -or $out -notmatch 'Stopped') { throw "prompt branch output:`n$out" }
           if (Test-Path venv\.deps) { throw 'venv was created after answering No' }
           Write-Host 'error and prompt branches behaved as expected'
+          exit 0
       - name: Launcher check mode (npm install, asset setup, file checks)
         shell: cmd
         run: |
