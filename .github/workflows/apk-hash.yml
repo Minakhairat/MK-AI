@@ -1,0 +1,28 @@
+name: apk-hash
+on:
+  workflow_dispatch:
+  push:
+    paths: ['apk-hash.version']
+concurrency:
+  group: apk-hash
+  cancel-in-progress: true
+permissions:
+  contents: read
+  actions: read
+defaults:
+  run:
+    shell: bash
+jobs:
+  hash:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: mkai-runner-debug-apk
+          run-id: 45641224354
+          github-token: ${{ github.token }}
+          path: dl
+      - name: Hash the existing validated APK bytes (no rebuild)
+        run: |
+          ls -la dl
+          { echo '### Existing artifact mkai-runner-debug-apk from run 45641224354 (not rebuilt)'; echo '```'; sha256sum dl/*.apk; stat -c 'size_bytes=%s' dl/*.apk; echo '--- signing certificate (expected: Android Debug key, not a release certificate)'; keytool -printcert -jarfile dl/runner-clean.apk | head -8; echo '--- package'; unzip -p dl/runner-clean.apk AndroidManifest.xml | strings | grep -m3 -i 'com.mkai'; echo '--- test files must be absent'; unzip -l dl/runner-clean.apk | grep -i -E 'test-|\.zip' || echo 'no test-* or .zip files in the clean APK'; echo '```'; } | tee -a "$GITHUB_STEP_SUMMARY"
