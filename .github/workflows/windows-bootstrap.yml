@@ -37,7 +37,8 @@ jobs:
           cp -r build/detect-template $P/build/
           cp requirements.txt constraints.txt $P/
           cp windows-bootstrap/setup.ps1 windows-bootstrap/README-NOTICES.txt $P/windows-bootstrap/
-          cp windows-bootstrap/MK-AI.bat $P/
+          sed 's/\r$//; s/$/\r/' windows-bootstrap/MK-AI.bat > $P/MK-AI.bat
+          head -c 60 $P/MK-AI.bat | od -c | head -3
           echo "--- binaries inside the starter:"; find $P -type f \( -name '*.dll' -o -name '*.exe' -o -name '*.pyd' -o -name '*.onnx' -o -name '*.pt' -o -name '*.safetensors' \) -printf '%s %p\n' | tee /tmp/bins.txt
           if grep -i 'dll\|exe\|pyd\|\.pt\|safetensors' /tmp/bins.txt; then echo 'AUDIT FAIL: third-party binary or model in starter'; exit 1; fi
           if find $P -type f \( -name '*.jpg' -o -name '*.jpeg' -o -name '*.zip' \) | grep -i 'blood\|oxford\|app\.zip\|ds\.zip'; then echo 'AUDIT FAIL: dataset'; exit 1; fi
