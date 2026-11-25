@@ -25,9 +25,14 @@ document.getElementById('train').onclick=async()=>{
  log('تم التدريب داخل المتصفح في '+Math.round(performance.now()-t0)+' ms. دقة التدريب (مش اختبار): '+h.history.acc.at(-1).toFixed(2));
  window.trainedInBrowser=true;export_.disabled=false;};
 const export_=document.getElementById('export');
-export_.onclick=async()=>{const w=head.getWeights();const H={task:'classify',classes:classes.map(c=>c.name),D:w[0].shape[0],W:Array.from(await w[0].data()),b:Array.from(await w[1].data())};
- const z=new JSZip();const files=(await (await fetch('template/files.json')).json());
- for(const f of files){const u=(f.startsWith('base/')&&window.baseURL===BUCKET)?BUCKET+f.slice(5):'template/'+f;z.file(f,await (await fetch(u)).arrayBuffer());}
- z.file('head.json',JSON.stringify(H));const blob=await z.generateAsync({type:'blob'});
- const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='mkai-app.zip';a.click();log('تم التصدير');window.exported=true;};
+export_.onclick=async()=>{const w=head.getWeights();const hosted=window.baseURL===BUCKET;const aid=crypto.randomUUID().replace(/-/g,'').slice(0,10);
+ const H={task:'classify',classes:classes.map(c=>c.name),D:w[0].shape[0],W:Array.from(await w[0].data()),b:Array.from(await w[1].data())};if(hosted)H.baseURL=BUCKET;
+ const z=new JSZip();const all=(await (await fetch('template/files.json')).json()).filter(f=>f!=='sw.js'&&f!=='manifest.json'&&(!hosted||!f.startsWith('base/')));
+ for(const f of all){z.file(f,await (await fetch('template/'+f)).arrayBuffer());}
+ z.file('head.json',JSON.stringify(H));
+ z.file('manifest.json',JSON.stringify({name:'MK AI classifier '+aid,short_name:'MK AI '+aid.slice(0,4),id:'mkai-cls-'+aid,start_url:'./',display:'standalone',icons:[]}));
+ const F=['./',...all.map(f=>'./'+f),'./head.json','./manifest.json'];const C='mkai-cls-'+aid;
+ z.file('sw.js',`const C=${JSON.stringify(C)};const F=${JSON.stringify(F)};const B=${JSON.stringify(hosted?BUCKET:'')};self.addEventListener('install',e=>e.waitUntil(caches.open(C).then(c=>c.addAll(F))));self.addEventListener('fetch',e=>{const u=e.request.url;if(e.request.method!=='GET')return;e.respondWith(caches.open(C).then(c=>c.match(e.request).then(r=>r||fetch(e.request).then(n=>{if(n.ok&&((B&&u.startsWith(B))||u.startsWith(self.registration.scope)))c.put(e.request,n.clone());return n;}))));});`);
+ const blob=await z.generateAsync({type:'blob'});
+ const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='mkai-classifier-'+aid+'.zip';a.click();log('تم التصدير. معرّف التطبيق: '+aid+(hosted?' (النموذج الأساسي بيتحمّل من Google أول فتح، من غير تضمينه في الملف)':''));window.exported=true;window.appId=aid;};
 </script></body></html>
