@@ -4,7 +4,7 @@ import puppeteer from 'puppeteer-core'; import {diag} from './parity_diag.mjs'; 
 const [www,zip,td,out,bin]=process.argv.slice(2);
 const mime={'.html':'text/html','.js':'text/javascript','.mjs':'text/javascript','.css':'text/css','.wasm':'application/wasm','.svg':'image/svg+xml'};
 const s=http.createServer((q,r)=>{let p=path.join(www,q.url.split('?')[0]);if(p.endsWith('/'))p+='index.html';if(!fs.existsSync(p)){r.writeHead(404);return r.end();}r.writeHead(200,{'content-type':mime[path.extname(p)]||'application/octet-stream'});fs.createReadStream(p).pipe(r);}).listen(8199);
-const b=await puppeteer.launch({executablePath:'/usr/bin/google-chrome',args:['--no-sandbox','--headless=new']});
+const b=await puppeteer.launch({executablePath:process.env.CHROME_PATH||'/usr/bin/google-chrome',args:['--no-sandbox','--headless=new']});
 const pg=await b.newPage();const errs=[];pg.on('pageerror',e=>errs.push(String(e)));const ext=[];pg.on('request',r=>{const u=r.url();if(!u.startsWith('http://localhost:8199')&&!u.startsWith('data:')&&!u.startsWith('blob:'))ext.push(u);});
 await pg.goto('http://localhost:8199/');
 await (await pg.$('#f')).uploadFile(zip);
