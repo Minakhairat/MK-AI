@@ -1,0 +1,46 @@
+name: isolation-check
+on:
+  workflow_dispatch:
+  push:
+    paths: ['isolation.version']
+concurrency:
+  group: isolation-check
+  cancel-in-progress: true
+permissions:
+  contents: read
+  actions: read
+jobs:
+  side-by-side:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fetch the two debug APKs built earlier by our own workflows (same repo, no new accounts)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p apks dl
+          RID=$(gh run list --workflow android-runner.yml --status success -L 1 --json databaseId -q '.[0].databaseId'); XID=$(gh run list --workflow android.yml --status success -L 1 --json databaseId -q '.[0].databaseId')
+          echo "runner run=$RID export-test run=$XID" | tee -a $GITHUB_STEP_SUMMARY
+          gh run download $RID -n mkai-runner-debug-apk -D dl/r; gh run download $XID -n mkai-debug-apk -D dl/x
+          cp dl/r/runner-clean.apk apks/runner-clean.apk; cp dl/x/app-debug.apk apks/export-test.apk
+          sha256sum apks/*.apk | tee -a $GITHUB_STEP_SUMMARY
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules && sudo udevadm trigger --name-match=kvm
+      - name: Emulator, both apps installed together
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 33
+          arch: x86_64
+          target: google_apis
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim
+          script: bash android-runner/isolation_check.sh
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: isolation-evidence
+          path: isolation-evidence.txt
+          if-no-files-found: ignore
