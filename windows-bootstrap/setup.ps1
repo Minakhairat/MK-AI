@@ -8,7 +8,7 @@ $root = Split-Path -Parent $PSScriptRoot
 Set-Location $root
 $interactive = -not ($env:MKAI_NONINTERACTIVE -eq '1')
 function Say($m) { Write-Host "[MK AI] $m" }
-function Sha256($f) { (Get-FileHash $f -Algorithm SHA256).Hash.ToLower() }
+function Sha256($f) { $h = [Security.Cryptography.SHA256]::Create(); $st = [IO.File]::OpenRead($f); try { ([BitConverter]::ToString($h.ComputeHash($st)) -replace '-','').ToLower() } finally { $st.Dispose() } }
 function Final-Host($url) {
   $r = Invoke-WebRequest $url -Method Head -UseBasicParsing
   if ($r.BaseResponse.ResponseUri) { return $r.BaseResponse.ResponseUri } else { return $r.BaseResponse.RequestMessage.RequestUri }
