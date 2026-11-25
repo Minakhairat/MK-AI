@@ -35,8 +35,10 @@ jobs:
           7z x -y -o$P/python embed.zip >/dev/null
           printf '%s\r\n' 'python312.zip' '.' 'Lib\site-packages' > $P/python/python312._pth
           mkdir -p $P/python/Lib/site-packages
-          python -m pip install --target $P/python/Lib/site-packages torch==2.6.0 torchvision==0.21.0 --index-url https://download.pytorch.org/whl/cpu --extra-index-url https://pypi.org/simple
-          python -m pip install --target $P/python/Lib/site-packages -r requirements.txt
+          python -m pip freeze | grep -v '^torch\|^torchvision\| @ ' > constraints.txt
+          echo '--- constraints (versions proven in the runner env that runs the same pipeline):'; grep -i '^transformers\|^timm\|^huggingface\|^onnx\|^numpy\|^scipy' constraints.txt
+          python -m pip install --target $P/python/Lib/site-packages torch==2.6.0 torchvision==0.21.0 -r requirements.txt -c constraints.txt --index-url https://download.pytorch.org/whl/cpu --extra-index-url https://pypi.org/simple
+          PYTHONPATH=$P/python/Lib/site-packages python -c "import torch,transformers;from transformers import RTDetrForObjectDetection;print('import OK',torch.__version__,transformers.__version__)"
           python -c "from huggingface_hub import snapshot_download as s; print(s('PekingU/rtdetr_r18vd', cache_dir='$P/hf'))"
           mkdir -p $P/build
           cp -r server trainer studio $P/
