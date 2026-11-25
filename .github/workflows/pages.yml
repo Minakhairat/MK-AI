@@ -27,7 +27,7 @@ jobs:
       - name: Assemble site (only the Apache-2.0 backbone export is published)
         run: |
           mkdir -p site
-          cp studio/index.html studio/jszip.min.js studio/ort.min.js studio/ort-wasm-simd-threaded.* studio/favicon.svg studio/pwa-192x192.png studio/pwa-512x512.png studio/apple-touch-icon.png site/
+          cp studio/index.html studio/jszip.min.js studio/ort.min.js studio/ort-wasm-simd-threaded.* studio/favicon.svg studio/pwa-192x192.png studio/pwa-512x512.png studio/apple-touch-icon.png studio/manifest.webmanifest studio/sw.js site/
           cp -r studio/template site/template
           cp -r studio/base site/base
       - name: Fail if unexpected model files are in the site
