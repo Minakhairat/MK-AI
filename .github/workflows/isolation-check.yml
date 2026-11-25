@@ -9,6 +9,9 @@ concurrency:
 permissions:
   contents: read
   actions: read
+defaults:
+  run:
+    shell: bash
 jobs:
   side-by-side:
     runs-on: ubuntu-latest
