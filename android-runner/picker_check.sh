@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# CI best effort: real system file picker in the emulator. Pushes a good export zip to Downloads, taps the import button, picks the file, expects MKAI_RUNNER_IMPORTED in the console.
+# CI REQUIRED check (exit 1 when the import is not confirmed): real system file picker in the emulator. Pushes a good export zip to Downloads, taps the import button, picks the file, expects MKAI_RUNNER_IMPORTED in the console.
 set -u
 APP=${APP_ID:-com.mkai.runner}; E=picker-evidence.txt; : > $E
 adb uninstall $APP >/dev/null 2>&1; adb install -r "$APK" || exit 1
@@ -26,9 +26,9 @@ for t in pick-test Downloads pick-test; do
  xy=$(tapnode "$t") && { echo "tapped '$t' at $xy" >> $E; adb shell input tap $xy; sleep 3; } || echo "'$t' not found in picker" >> $E
 done
 sleep 12; adb exec-out screencap -p > picker-2.png
-adb logcat -d | grep -E 'MKAI_|Capacitor/Console' | tail -20 | sed 's/^.*Console: //' >> $E
+adb logcat -d > picker_logcat_full.txt; grep -E 'MKAI_|Capacitor/Console' picker_logcat_full.txt | tail -20 | sed 's/^.*Console: //' >> $E
 cat $E >> "${GITHUB_STEP_SUMMARY:-/dev/null}"
 for f in picker-1.png picker-2.png; do [ -s $f ] && { echo "<details><summary>$f base64</summary><pre>"; base64 -w0 $f; echo "</pre></details>"; } >> "${GITHUB_STEP_SUMMARY:-/dev/null}"; done
 { echo '<details><summary>picker ui dump</summary><pre>'; head -c 20000 picker-picker-ui.xml | sed 's/&/\&amp;/g;s/</\&lt;/g'; echo '</pre></details>'; } >> "${GITHUB_STEP_SUMMARY:-/dev/null}"
-grep -q 'MKAI_RUNNER_IMPORTED' $E && echo PICKER_IMPORT_OK && exit 0
-echo PICKER_IMPORT_NOT_CONFIRMED; exit 0
+grep -q 'MKAI_RUNNER_IMPORTED' picker_logcat_full.txt && echo PICKER_IMPORT_OK && { echo PICKER_IMPORT_OK >> $E; exit 0; }
+echo PICKER_IMPORT_NOT_CONFIRMED | tee -a $E; exit 1
