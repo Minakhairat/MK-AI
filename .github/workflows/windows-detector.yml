@@ -30,6 +30,14 @@ jobs:
         run: python trainer/prep_bloodcell.py
       - name: Train on Windows with the Studio detector pipeline (CPU, 12 epochs)
         run: python trainer/rt_pipeline.py build/bc/ds.zip build/bc/out 12
+      - name: Preserve trained outputs privately (Actions cache of this repo, not a downloadable artifact, not published)
+        if: always() && hashFiles('build/bc/out/app.zip') != ''
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            build/bc/out
+            build/bc/test
+          key: mkai-bc-out-${{ github.run_id }}
       - name: Exit and artifact checks
         run: |
           ls -la build/bc/out/app.zip build/bc/out/app/detector.onnx build/bc/out/app/model.json
