@@ -18,11 +18,18 @@ function checkHead(H){if(!H||!okLabels(H.classes))throw new Error('head.json: ba
  return{classes:H.classes,D:H.D,W:H.W,b:H.b};}
 function checkModel(M){if(!M||!okLabels(M.classes))throw new Error('model.json: bad class names');if(!Number.isInteger(M.size)||M.size<32||M.size>2048)throw new Error('model.json: bad size');if(!isNum(M.score_threshold,0,1))throw new Error('model.json: bad threshold');
  return{classes:M.classes,size:M.size,score_threshold:M.score_threshold};}
+// Reads the zip's own central directory (not JSZip's normalized view) to reject duplicate or ambiguous names.
+function rawNames(buf){const v=new DataView(buf.buffer||buf);const u=new Uint8Array(buf);let e=-1;for(let i=u.length-22;i>=Math.max(0,u.length-22-65535);i--){if(v.getUint32(i,true)===0x06054b50){e=i;break;}}
+ if(e<0)throw new Error('zip end record not found');const n=v.getUint16(e+10,true);let o=v.getUint32(e+16,true);const out=[];
+ for(let k=0;k<n;k++){if(o+46>u.length||v.getUint32(o,true)!==0x02014b50)throw new Error('bad zip directory');const nl=v.getUint16(o+28,true),el=v.getUint16(o+30,true),cl=v.getUint16(o+32,true);if(o+46+nl>u.length)throw new Error('bad zip directory');out.push(new TextDecoder('utf-8').decode(u.subarray(o+46,o+46+nl)));o+=46+nl+el+cl;}
+ return out;}
 async function importZip(file){
  if(file.size>LIM.zip)throw new Error('zip too large');
- const z=await JSZip.loadAsync(await file.arrayBuffer());
- const ents=Object.keys(z.files);if(ents.length>LIM.entries)throw new Error('too many files');
- for(const p of ents)if(badPath(p.replace(/\/$/,'')))throw new Error('unsafe path in zip');
+ const ab=await file.arrayBuffer();const raw=rawNames(new Uint8Array(ab));
+ if(raw.length>LIM.entries)throw new Error('too many files');
+ const seen=new Set();for(const p of raw){const q=p.replace(/\/$/,'');if(badPath(q))throw new Error('unsafe path in zip');const k=q.toLowerCase();if(seen.has(k))throw new Error('duplicate file name in zip');seen.add(k);}
+ const z=await JSZip.loadAsync(ab);
+ if(Object.keys(z.files).length!==raw.length)throw new Error('zip entry names are ambiguous');
  const get=async(n,cap)=>{const e=z.file(n);if(!e)return null;return readCapped(e,cap);};
  const hj=await get('head.json',LIM.json),mj=await get('model.json',LIM.json);let rec;
  const txt=b=>JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(b));
@@ -51,7 +58,7 @@ async function classify(el){const{m,S}=cur,H=m.meta,z=224,t=document.createEleme
 async function detect(im){const{m,S}=cur,M=m.meta,z=M.size,t=document.createElement('canvas');t.width=t.height=z;const g=t.getContext('2d');g.drawImage(im,0,0,z,z);const d=g.getImageData(0,0,z,z).data;const f=new Float32Array(3*z*z);
  for(let i=0;i<z*z;i++){f[i]=d[i*4]/255;f[z*z+i]=d[i*4+1]/255;f[2*z*z+i]=d[i*4+2]/255;}
  const o=await S.run({image:new ort.Tensor('float32',f,[1,3,z,z])}),res=[],W=im.naturalWidth||im.videoWidth,Hh=im.naturalHeight||im.videoHeight;
- for(let i=0;i<o.scores.data.length;i++)if(o.scores.data[i]>=M.score_threshold){const b=Array.from(o.boxes.data.slice(i*4,i*4+4));res.push({score:o.scores.data[i],cls:Number(o.labels.data[i]),box:[b[0]*W/z,b[1]*Hh/z,b[2]*W/z,b[3]*Hh/z]});}
+ for(let i=0;i<Math.min(o.scores.data.length,1000,o.boxes.data.length/4);i++)if(o.scores.data[i]>=M.score_threshold){const b=Array.from(o.boxes.data.slice(i*4,i*4+4));res.push({score:o.scores.data[i],cls:Number(o.labels.data[i]),box:[b[0]*W/z,b[1]*Hh/z,b[2]*W/z,b[3]*Hh/z]});}
  return res;}
 const cols=['#e00','#07f','#0a0','#e90'];
 async function infer(el){const c=$('c'),M=cur.m.meta;
@@ -72,8 +79,8 @@ render();
 window.MKAI_API={importZip,openModel,removeModel,infer,models,get cur(){return cur;}};
 // CI-only self test (enabled only when the CI copy sets window.MKAI_TEST): imports bundled test zips, runs generated-image and live-camera-frame inference, logs the results.
 if(window.MKAI_TEST){(async()=>{try{const out=[];for(const n of window.MKAI_TEST){const b=await(await fetch(n)).blob();const id=await importZip(new File([b],n));await openModel(id);
- const c=document.createElement('canvas');c.width=c.height=320;const g=c.getContext('2d');g.fillStyle='#fff';g.fillRect(0,0,320,320);g.fillStyle='#d00';g.fillRect(80,80,100,100);const im=new Image();await new Promise(r=>{im.onload=r;im.src=c.toDataURL();});
+ const c=document.createElement('canvas');c.width=c.height=320;const g=c.getContext('2d');g.fillStyle=cur.m.type==='classify'?'#d00':'#fff';g.fillRect(0,0,320,320);g.fillStyle='#d00';g.fillRect(80,80,100,100);const im=new Image();await new Promise(r=>{im.onload=r;im.src=c.toDataURL();});
  const r1=await infer(im);let cam='none';
  try{const st=await navigator.mediaDevices.getUserMedia({video:true,audio:false});const v=$('v');v.srcObject=st;v.muted=true;await v.play();await new Promise(r=>setTimeout(r,1500));const r2=await infer(v);cam=v.videoWidth+'x'+v.videoHeight+' frame_infer_ok='+(r2!==undefined);st.getTracks().forEach(t=>t.stop());}catch(e){cam='error '+(e&&e.name?e.name:e);}
- out.push(cur.m.type+' img_infer='+(Array.isArray(r1)?r1.length:r1.length)+' cam='+cam);}
+ const top=cur.m.type==='classify'?' top='+cur.m.meta.classes[r1.indexOf(Math.max(...r1))]+' p='+Math.max(...r1).toFixed(3):' n='+r1.length;out.push(cur.m.type+' img_infer'+top+' cam='+cam);}
  console.log('MKAI_NATIVE_OK secure='+window.isSecureContext+' origin='+location.origin+' online='+navigator.onLine+' | '+out.join(' | '));}catch(err){console.log('MKAI_NATIVE_FAIL '+err);}})();}
