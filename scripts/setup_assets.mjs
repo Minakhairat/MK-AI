@@ -13,6 +13,7 @@ const T='studio/template';fs.rmSync(T,{recursive:true,force:true});fs.mkdirSync(
 for(const f of ['app.js','index.html'])cp('templates/classify/'+f,T+'/'+f);
 for(const f of ORT)cp('studio/'+f,T+'/'+f);
 for(const f of fs.readdirSync('studio/base'))cp('studio/base/'+f,T+'/base/'+f);
+cp('templates/THIRD-PARTY-NOTICES.txt',T+'/THIRD-PARTY-NOTICES.txt');
 const files=fs.readdirSync(T,{recursive:true}).filter(f=>fs.statSync(T+'/'+f).isFile()).map(f=>f.split(path.sep).join('/'));
 fs.writeFileSync(T+'/files.json',JSON.stringify(files));
 // detector app template (ONNX runtime for the browser)
@@ -20,4 +21,5 @@ const D='build/detect-template';fs.rmSync(D,{recursive:true,force:true});fs.mkdi
 for(const f of fs.readdirSync('templates/detect'))cp('templates/detect/'+f,D+'/'+f);
 for(const f of ['ort.min.js','ort-wasm-simd-threaded.wasm','ort-wasm-simd-threaded.mjs','ort-wasm-simd-threaded.jsep.wasm','ort-wasm-simd-threaded.jsep.mjs'])cp('node_modules/onnxruntime-web/dist/'+f,D+'/'+f);
 cp('templates/detect/NOTICE-MODEL.txt',D+'/NOTICE-MODEL.txt');cp('studio/base/LICENSE-APACHE-2.0.txt',D+'/LICENSE-APACHE-2.0.txt');
+cp('templates/THIRD-PARTY-NOTICES.txt',D+'/THIRD-PARTY-NOTICES.txt');
 console.log('assets ready');
