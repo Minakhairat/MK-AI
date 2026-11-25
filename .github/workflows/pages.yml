@@ -1,7 +1,7 @@
 name: pages
 on:
   push:
-    branches: [main]
+    paths: ['site.version']
   workflow_dispatch:
 permissions:
   contents: read
@@ -21,19 +21,23 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with: { node-version: 22 }
-      - run: npm install && npm run setup
-      - name: Assemble site (no model weights are published)
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.10' }
+      - run: |
+          pip install torch==2.6.0 --index-url https://download.pytorch.org/whl/cpu
+          pip install timm onnx onnxscript
+          npm install && npm run setup
+      - name: Assemble site (only the Apache-2.0 backbone export is published)
         run: |
-          mkdir -p site/classify site/detect
-          cp studio/landing.html site/index.html
-          cp studio/index.html studio/tf.min.js studio/jszip.min.js site/classify/
-          cp -r studio/template site/classify/template
-          rm -rf site/classify/template/base
-          cp studio/label.html studio/jszip.min.js site/detect/
-          find site -name '*.bin' -o -name 'model.json' | grep -v template/files.json || true
-      - name: Fail if weights slipped in
+          mkdir -p site
+          cp studio/index.html studio/jszip.min.js studio/ort.min.js studio/ort-wasm-simd-threaded.* site/
+          cp -r studio/template site/template
+          cp -r studio/base site/base
+      - name: Fail if unexpected model files are in the site
         run: |
-          if find site -name '*.bin' -o -name 'model.json' -o -name '*.onnx' | grep .; then exit 1; fi
+          find site -name '*.onnx' | sort
+          test "$(find site -name '*.onnx' | wc -l)" = "2"
+          find site -name '*.bin' -o -name '*.pt' -o -name '*.pth' | grep . && exit 1 || true
       - uses: actions/upload-pages-artifact@v4
         with: { path: site }
       - id: dep
