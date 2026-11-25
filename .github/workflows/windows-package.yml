@@ -56,12 +56,59 @@ jobs:
           sed -i 's/^          //; s/$/\r/' $P/MK-AI.bat
           cat $P/MK-AI.bat | head -4
           du -sh $P
+      - name: Licenses, notices and contents audit
+        run: |
+          set -e
+          P=pkg/MK-AI
+          mkdir -p $P/licenses/python-packages
+          python - <<'PYEOF'
+          import os,glob,shutil,json,sys
+          from importlib import metadata
+          sp='pkg/MK-AI/python/Lib/site-packages'
+          rows=[]
+          for d in sorted(glob.glob(sp+'/*.dist-info')):
+              md=open(d+'/METADATA',encoding='utf-8',errors='ignore').read().split('\n\n')[0]
+              name=ver=lic='';cls=[]
+              for l in md.split('\n'):
+                  if l.startswith('Name: '):name=l[6:]
+                  elif l.startswith('Version: '):ver=l[9:]
+                  elif l.startswith('License-Expression: '):lic=l[20:]
+                  elif l.startswith('License: ') and not lic:lic=l[9:][:80]
+                  elif l.startswith('Classifier: License'):cls.append(l.split('::')[-1].strip())
+              rows.append((name,ver,lic or '; '.join(cls) or 'UNSPECIFIED'))
+              dst='pkg/MK-AI/licenses/python-packages/'+name
+              for f in glob.glob(d+'/**/*',recursive=True):
+                  b=os.path.basename(f).upper()
+                  if os.path.isfile(f) and any(k in b for k in ('LICENSE','LICENCE','COPYING','NOTICE')):
+                      os.makedirs(dst,exist_ok=True);shutil.copy(f,dst)
+          with open('pkg/MK-AI/licenses/PACKAGES.txt','w') as o:
+              o.write('Python packages bundled in this folder (name, version, declared license)\n\n')
+              for r in rows:o.write('%s %s : %s\n'%r)
+          print(len(rows),'packages');print('UNSPECIFIED:',[r[0] for r in rows if r[2]=='UNSPECIFIED'])
+          PYEOF
+          cp $P/python/LICENSE.txt $P/licenses/PYTHON-LICENSE.txt 2>/dev/null || echo "no python LICENSE.txt in embed zip"
+          ls $P/python | head -30
+          cat > $P/licenses/README-NOTICES.txt <<'TXT'
+          MK AI portable package, third-party material
+          - Python 3.12 embeddable distribution (PSF license), see PYTHON-LICENSE.txt.
+          - Python packages listed in PACKAGES.txt, each with the license files shipped by its wheel in python-packages/.
+          - PekingU/rtdetr_r18vd (detector backbone, needed for local training; NOT a user-trained model). Hugging Face model metadata lists Apache-2.0. Pretrained on COCO (mixed Flickr image terms; effect on weights not assessed). See hf/ (model card and files as downloaded).
+          - Studio assets (ONNX Runtime Web, JSZip, TensorFlow.js, MobileNetV3 backbone) carry their own notices in studio/template and build/detect-template (THIRD-PARTY-NOTICES.txt, NOTICE-MODEL.txt).
+          - No datasets, no trained models and no benchmark weights are included.
+          TXT
+          sed -i 's/^          //' $P/licenses/README-NOTICES.txt
+          # contents audit: fail on datasets / trained artifacts
+          echo "--- all .onnx/.pt/.pth/.safetensors/.bin/.zip files outside site-packages:"
+          find $P -type f \( -name '*.onnx' -o -name '*.pt' -o -name '*.pth' -o -name '*.safetensors' -o -name '*.zip' -o -name '*.jpg' -o -name '*.jpeg' -o -name '*.png' \) -not -path "$P/python/Lib/site-packages/*" -printf '%s %p\n' | sort -k2 | tee /tmp/audit.txt
+          if grep -i 'bloodcell\|blood\|oxford\|benchmark\|app\.zip\|best\.' /tmp/audit.txt; then echo 'AUDIT FAIL: dataset or trained artifact found'; exit 1; fi
+          if [ -d $P/build/job ] || [ -d $P/data ]; then echo 'AUDIT FAIL'; exit 1; fi
+          echo "AUDIT OK: only pretrained backbones/template assets"
       - name: Zip (not uploaded anywhere)
         run: |
           cd pkg && 7z a -tzip -mx=5 ../MK-AI-Windows-portable.zip MK-AI >/dev/null
           cd ..
           ls -la MK-AI-Windows-portable.zip
-          { echo "### Portable package built (private CI build, NOT uploaded or published)"; echo "size bytes: $(stat -c %s MK-AI-Windows-portable.zip)"; echo "sha256: $(sha256sum MK-AI-Windows-portable.zip | cut -d' ' -f1)"; } | tee -a "$GITHUB_STEP_SUMMARY"
+          { echo "unpacked bytes: $(du -sb pkg/MK-AI | cut -f1)"; echo "### Portable package built (private CI build, NOT uploaded or published)"; echo "size bytes: $(stat -c %s MK-AI-Windows-portable.zip)"; echo "sha256: $(sha256sum MK-AI-Windows-portable.zip | cut -d' ' -f1)"; } | tee -a "$GITHUB_STEP_SUMMARY"
       - name: Clean-machine test (fresh folder, no system Python or Node on PATH, offline model)
         shell: pwsh
         run: |
@@ -69,6 +116,12 @@ jobs:
           7z x -y -oC:\clean MK-AI-Windows-portable.zip | Out-Null
           $root = 'C:\clean\MK-AI'
           $sys = "$env:SystemRoot\System32"
+          # 0) real outbound network block for everything (loopback stays allowed by Windows)
+          New-NetFirewallRule -DisplayName 'mkai-block-python' -Direction Outbound -Program "$root\python\python.exe" -Action Block | Out-Null
+          Set-Content C:\clean\nettest.py "import urllib.request`ntry:`n    urllib.request.urlopen('https://pypi.org',timeout=15);print('REACHED')`nexcept Exception as e:`n    print('BLOCKED',type(e).__name__)"
+          $t = & "$root\python\python.exe" C:\clean\nettest.py
+          Write-Host "bundled python outbound test: $t"
+          if ($t -notmatch 'BLOCKED') { throw 'outbound not blocked for bundled python' }
           # 1) the launcher starts the local Studio using only the bundled Python
           $env:MKAI_NOBROWSER = '1'
           $p = Start-Process cmd -ArgumentList '/c', "set PATH=$sys&& cd /d $root && MK-AI.bat > C:\clean\launcher.log 2>&1" -PassThru -WindowStyle Hidden
@@ -82,6 +135,15 @@ jobs:
           $h = Invoke-WebRequest http://127.0.0.1:8000/ -UseBasicParsing
           if ($h.StatusCode -ne 200) { throw 'studio page not served' }
           Write-Host 'launcher OK: status idle, page 200'
+          New-Item -ItemType Directory C:\shots -Force | Out-Null
+          Push-Location C:\shots
+          $chrome = 'C:\Program Files\Google\Chrome\Application\chrome.exe'
+          & $chrome --headless=new --disable-gpu --no-sandbox --window-size=1100,800 --screenshot=C:\shots\studio.png http://127.0.0.1:8000/ | Out-Host
+          Start-Sleep 3
+          Pop-Location
+          if (-not (Test-Path C:\shots\studio.png)) { throw 'no screenshot' }
+          Write-Host ('screenshot bytes ' + (Get-Item C:\shots\studio.png).Length)
+          Write-Host 'PNGB64START'; [Convert]::ToBase64String([IO.File]::ReadAllBytes('C:\shots\studio.png')) | Write-Host; Write-Host 'PNGB64END'
           taskkill /T /F /PID $p.Id | Out-Null
           # 2) the bundled Python trains and exports the detector offline (pretrained model from the package)
           $env:HF_HUB_CACHE = "$root\hf"; $env:HF_HUB_OFFLINE = '1'; $env:PYTHONNOUSERSITE = '1'
