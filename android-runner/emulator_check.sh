@@ -2,7 +2,7 @@
 set -u
 APK=wrap/android/app/build/outputs/apk/debug/app-debug.apk
 adb install -r "$APK" || exit 1
-adb shell pm grant com.mkai.exporttest android.permission.CAMERA || true
+adb shell pm grant ${APP_ID:-com.mkai.exporttest} android.permission.CAMERA || true
 
 adb shell cmd connectivity airplane-mode enable || true
 adb shell svc wifi disable || true
@@ -10,7 +10,7 @@ adb shell svc data disable || true
 sleep 3
 adb shell dumpsys connectivity | grep -m3 -iE 'NetworkAgentInfo|state' > /tmp/net.txt || true
 adb logcat -c
-adb shell am start -n com.mkai.exporttest/.MainActivity
+adb shell am start -n ${APP_ID:-com.mkai.exporttest}/.MainActivity
 for i in $(seq 1 60); do
   sleep 5
   if adb logcat -d | grep -q 'MKAI_NATIVE_'; then break; fi
