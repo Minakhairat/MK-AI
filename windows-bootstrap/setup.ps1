@@ -3,7 +3,7 @@
 # listed in windows-bootstrap\README-NOTICES.txt.
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
-[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocol]::Tls12
+[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 $root = Split-Path -Parent $PSScriptRoot
 Set-Location $root
 $interactive = -not ($env:MKAI_NONINTERACTIVE -eq '1')
