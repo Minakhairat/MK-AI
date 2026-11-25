@@ -1,0 +1,49 @@
+name: windows-detector
+on:
+  workflow_dispatch:
+  push:
+    paths: ['windows-detector.version']
+concurrency:
+  group: windows-detector
+  cancel-in-progress: true
+permissions:
+  contents: read
+defaults:
+  run:
+    shell: bash
+jobs:
+  train:
+    runs-on: windows-latest
+    timeout-minutes: 150
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12' }
+      - name: Install (CPU PyTorch and requirements, as the Windows launcher does)
+        run: |
+          pip install torch==2.6.0 torchvision==0.21.0 --index-url https://download.pytorch.org/whl/cpu
+          pip install -r requirements.txt
+          npm install && npm run setup
+      - name: Real-photo multiclass data (blood cells, 3 classes), downloaded in CI only
+        run: python trainer/prep_bloodcell.py
+      - name: Train on Windows with the Studio detector pipeline (CPU, 12 epochs)
+        run: python trainer/rt_pipeline.py build/bc/ds.zip build/bc/out 12
+      - name: Exit and artifact checks
+        run: |
+          ls -la build/bc/out/app.zip build/bc/out/app/detector.onnx build/bc/out/app/model.json
+          cat build/bc/out/app/model.json | head -c 400; echo
+      - name: Held-out evaluation of the exported ONNX (onnxruntime, Windows)
+        run: python trainer/eval_detect.py onnx build/bc/out/app/detector.onnx build/bc/out/app/model.json build/bc/test | tee build/bc/eval.txt
+      - name: Import the Windows-trained export into the Runner (headless Chrome on Windows) and run the held-out photos
+        env:
+          CHROME_PATH: 'C:\Program Files\Google\Chrome\Application\chrome.exe'
+        run: |
+          mkdir -p build/runner-www && cp android-runner/www/* build/runner-www/ && cp studio/jszip.min.js studio/ort.min.js studio/ort-wasm-simd-threaded*.mjs studio/ort-wasm-simd-threaded*.wasm build/runner-www/
+          mkdir -p build/pt && cd build/pt && npm init -y >/dev/null && npm i puppeteer-core >/dev/null && cd ../..
+          cp android-runner/parity_test.mjs android-runner/parity_diag.mjs build/pt/
+          python trainer/pil_pixels.py build/bc/test 320 build/bc/pil320.bin
+          (cd build/pt && node parity_test.mjs ../runner-www ../bc/out/app.zip ../bc/test ../bc/dets.json ../bc/pil320.bin)
+          python trainer/eval_detect.py dets build/bc/dets.json build/bc/out/app/model.json build/bc/test | tee build/bc/eval-runner.txt
+          { echo '### Windows-trained blood-cell detector: held-out photos. Software benchmark only, not a medical or diagnostic claim. Real exit codes asserted by the steps above.'; echo '#### exported ONNX via onnxruntime (Windows)'; echo '```'; cat build/bc/eval.txt; echo '```'; echo '#### same photos through the Runner (headless Chrome on Windows, app import path)'; echo '```'; cat build/bc/eval-runner.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
