@@ -3,6 +3,9 @@ on:
   workflow_dispatch:
   push:
     paths: ['ios.version']
+permissions:
+  contents: read
+  actions: read
 concurrency:
   group: ios-runner
   cancel-in-progress: true
@@ -24,23 +27,51 @@ jobs:
           python trainer/selftest.py
           ls -la build/selftest/out/app.zip build/test-classify.zip | tee -a "$GITHUB_STEP_SUMMARY"
           cp build/selftest/out/app.zip build/test-detect.zip
+      - name: Real validated exports and real held-out photos (downloaded in CI only, nothing published)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          pip install pyarrow huggingface_hub
+          mkdir -p dl build/ox
+          gh run download 45623950928 -n realphoto-detect-export -D dl
+          find dl -name app.zip | head -1 | xargs -I{} cp {} build/real-detect.zip
+          python trainer/prep_bloodcell.py
+          python trainer/oxford_classify.py | tee build/ox/eval.txt
+          cp build/ox/export.zip build/real-classify.zip
+          ls -la build/real-*.zip | tee -a "$GITHUB_STEP_SUMMARY"
+          tail -2 build/ox/eval.txt | tee -a "$GITHUB_STEP_SUMMARY"
       - name: Generate the native iOS project (Capacitor 7), unsigned
         run: |
           mkdir -p wrap/www && cd wrap
           cp ../android-runner/www/* www/
           cp ../studio/jszip.min.js ../studio/ort.min.js ../studio/ort-wasm-simd-threaded*.mjs ../studio/ort-wasm-simd-threaded*.wasm www/
           cp ../build/test-classify.zip ../build/test-detect.zip www/
-          echo "window.MKAI_TEST=localStorage.getItem('ci_launch')?undefined:['test-classify.zip','test-detect.zip'];" > www/test-config.js
+          mkdir -p www/ph-det www/ph-cls
+          cp ../build/real-detect.zip ../build/real-classify.zip www/
+          cp ../build/bc/test/*.jpg www/ph-det/
+          python - <<'PY'
+          import json,glob,os
+          dt=sorted(os.path.basename(p) for p in glob.glob('www/ph-det/*.jpg'))
+          T=json.load(open('../build/ox/test/truth.json'))['images'][:40]
+          ox=[t['file'] for t in T]
+          for f in ox: os.replace('../build/ox/test/'+f,'www/ph-cls/'+f)
+          cfg=[{'type':'classify','zip':'real-classify.zip','dir':'ph-cls','photos':ox},{'type':'detect','zip':'real-detect.zip','dir':'ph-det','photos':dt}]
+          truth={'cls':{t['file']:[t['label'],t['py_pred']] for t in T}}
+          open('www/test-config.js','w').write("window.MKAI_TEST=undefined;window.MKAI_REAL=localStorage.getItem('ci_launch')?undefined:"+json.dumps(cfg)+";window.MKAI_TRUTH="+json.dumps(truth)+";")
+          print('real photos',len(ox),len(dt))
+          PY
+          cp ../android-runner/test-photos.js ../android-runner/ios/ci-real-score.js www/
           cp ../android-runner/ios/ci-relaunch.js www/
           cat > www/ci-out.js <<'JS'
           (function(){const o=document.createElement('pre');o.id='ciout';o.style.cssText='white-space:pre-wrap;font:12px monospace;color:#9f9;direction:ltr;text-align:left;border-top:1px solid #444;margin-top:12px';document.body.appendChild(o);const l=console.log;console.log=function(){l.apply(console,arguments);const m=String(arguments[0]);if(/MKAI_/.test(m))o.textContent=m.replace(/^.*MKAI_/,'MKAI_').slice(0,170)+'\n'+o.textContent;};window.addEventListener('error',e=>{o.textContent='JSERROR '+e.message+'\n'+o.textContent;});})();
-          const of=window.fetch;window.fetch=function(u){const s=String(u);if(/test-(classify|detect)\.zip$/.test(s))return new Promise((res,rej)=>{const x=new XMLHttpRequest();x.open('GET',s);x.responseType='blob';x.onload=()=>res({blob:()=>Promise.resolve(x.response)});x.onerror=()=>rej(new Error('xhr fail'));x.send();});return of.apply(this,arguments);};
+          const of=window.fetch;window.fetch=function(u){const s=String(u);if(/(test|real)-(classify|detect)\.zip$/.test(s))return new Promise((res,rej)=>{const x=new XMLHttpRequest();x.open('GET',s);x.responseType='blob';x.onload=()=>res({blob:()=>Promise.resolve(x.response)});x.onerror=()=>rej(new Error('xhr fail'));x.send();});return of.apply(this,arguments);};
           console.log('MKAI_PROBE origin='+location.origin+' secure='+window.isSecureContext+' caches='+(typeof caches)+' wasm='+(typeof WebAssembly)+' getUserMedia='+!!(navigator.mediaDevices&&navigator.mediaDevices.getUserMedia));
           JS
           # iOS-only files (the shared runner source and the Android APK are NOT changed)
           cp ../android-runner/ios/ios-compat.js www/
           echo "body{padding-top:env(safe-area-inset-top);padding-bottom:env(safe-area-inset-bottom)}" > www/ios-safe.css
           sed -i '' 's#width=device-width,initial-scale=1#width=device-width,initial-scale=1,viewport-fit=cover#; s#<link rel="stylesheet" href="runner.css">#<link rel="stylesheet" href="runner.css"><link rel="stylesheet" href="ios-safe.css">#; s#<script src="runner.js">#<script src="ci-out.js"></script><script src="ios-compat.js"></script><script src="test-config.js"></script><script src="ci-relaunch.js"></script><script src="runner.js">#' www/index.html
+          sed -i '' 's#</body>#<script src="ci-real-score.js"></script><script src="test-photos.js"></script></body>#' www/index.html
           grep -c "ios-safe.css" www/index.html; grep -c "viewport-fit=cover" www/index.html
           npm init -y >/dev/null
           npm i @capacitor/core@7 @capacitor/cli@7 @capacitor/ios@7
@@ -70,7 +101,7 @@ jobs:
           cd wrap/ios
           [ "$(cat sim.rc)" = 0 ] && [ "$(cat dev.rc)" = 0 ] && test -f build-sim/Build/Products/Debug-iphonesimulator/App.app/App && test -f build-dev/Build/Products/Release-iphoneos/App.app/App || { echo "iOS build failed or no executable: sim.rc=$(cat sim.rc) dev.rc=$(cat dev.rc)" | tee -a "$GITHUB_STEP_SUMMARY"; exit 1; }
       - name: Run in the iOS Simulator, screenshot, RELAUNCH, screenshot again
-        timeout-minutes: 20
+        timeout-minutes: 30
         run: |
           set +e
           S="$GITHUB_STEP_SUMMARY"
@@ -82,7 +113,7 @@ jobs:
           APP=$(find wrap/ios/build-sim -name 'App.app' -maxdepth 6 | head -1); echo "installing $APP" | tee -a "$S"
           for t in 1 2; do perl -e 'alarm 240; exec @ARGV' xcrun simctl install $DEV "$APP"; r=$?; echo "install try$t exit=$r" | tee -a "$S"; [ $r = 0 ] && break; done; echo "install exit=$r" | tee -a "$S"
           B xcrun simctl launch $DEV com.mkai.runner 2>&1 | tee -a "$S"
-          sleep 150
+          sleep 540
           B xcrun simctl spawn $DEV launchctl list 2>&1 | grep -i mkai | tee -a "$S"
           SHOT ios-shot1.png
           echo "--- terminate and relaunch (same install, same data)" | tee -a "$S"
