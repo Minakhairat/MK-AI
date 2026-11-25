@@ -46,6 +46,17 @@ jobs:
           cat > $P/MK-AI.bat <<'BAT'
           @echo off
           cd /d "%~dp0"
+          rem Prerequisite: Microsoft Visual C++ Redistributable 2015-2022 (x64). Not bundled (Microsoft limits redistribution of those files).
+          set HAVE_VCRT=0
+          reg query "HKLM\SOFTWARE\Microsoft\VisualStudio\14.0\VC\Runtimes\x64" /v Installed 2>nul | find "0x1" >nul && set HAVE_VCRT=1
+          if "%MKAI_FORCE_NO_VCRT%"=="1" set HAVE_VCRT=0
+          if "%HAVE_VCRT%"=="0" (
+            echo [MK AI] One free Microsoft component is missing: Microsoft Visual C++ Redistributable ^(x64^).
+            echo [MK AI] Download and install it from Microsoft: https://aka.ms/vc14/vc_redist.x64.exe
+            echo [MK AI] Then run this file again.
+            if not "%MKAI_NOBROWSER%"=="1" pause
+            exit /b 2
+          )
           set HF_HUB_CACHE=%~dp0hf
           set HF_HUB_OFFLINE=1
           set PYTHONNOUSERSITE=1
@@ -143,20 +154,11 @@ jobs:
           have,need=scan();c=classify(have,need)
           print('BEFORE bundling:',{k:v for k,v in c.items() if k!='windows_system'})
           print('windows_system DLLs used:',c.get('windows_system'))
-          redist=glob.glob(r'C:\Program Files\Microsoft Visual Studio\*\*\VC\Redist\MSVC\*\x64\Microsoft.VC*.*\*.dll')
-          print('redist candidates',len(redist),redist[:3])
-          idx={os.path.basename(f).lower():f for f in redist}
-          for d in c.get('VC_RUNTIME_NOT_BUNDLED',[]):
-              if d in idx:
-                  for dst in (root+'/python', root+'/python/Lib/site-packages/torch/lib'):
-                      if os.path.isdir(dst): shutil.copy(idx[d],dst)
-                  print('bundled',d,'from',idx[d])
-              else: print('NOT FOUND in redist:',d)
+          print('NOT bundling Microsoft VC++ runtime DLLs (Microsoft limits their redistribution to licensed Visual Studio users); the launcher checks for the Microsoft redistributable instead')
           have,need=scan();c=classify(have,need)
-          print('AFTER bundling:',{k:v for k,v in c.items() if k!='windows_system'})
           if c.get('UNRESOLVED'): print('UNRESOLVED deps (inspect, may be delay-load or optional):',c['UNRESOLVED'])
-          if c.get('VC_RUNTIME_NOT_BUNDLED'): print('DEP AUDIT FAIL');sys.exit(1)
-          print('DEP AUDIT OK: remaining external deps are Windows system DLLs and the Universal CRT (built in to Windows 10/11)')
+          print('VC runtime DLLs required from the machine:',c.get('VC_RUNTIME_NOT_BUNDLED'))
+          print('DEP AUDIT DONE')
           PYEOF
           python /tmp/audit.py
           echo '--- torch/lib DLLs:'; ls $P/python/Lib/site-packages/torch/lib/*.dll | xargs -n1 basename | tr '\n' ' '; echo
@@ -188,6 +190,13 @@ jobs:
           $t = & "$root\python\python.exe" C:\clean\nettest.py
           Write-Host "bundled python outbound test: $t"
           if ($t -notmatch 'BLOCKED') { throw 'outbound not blocked for bundled python' }
+          $env:MKAI_FORCE_NO_VCRT = '1'
+          $neg = cmd /c "cd /d $root && MK-AI.bat" 2>&1
+          $negcode = $LASTEXITCODE
+          Write-Host ($neg -join "`n")
+          Write-Host "missing-runtime branch exit code: $negcode"
+          if ($negcode -ne 2 -or (($neg -join ' ') -notmatch 'aka.ms/vc14/vc_redist.x64.exe')) { throw 'missing-runtime branch did not behave' }
+          Remove-Item Env:MKAI_FORCE_NO_VCRT
           # 1) the launcher starts the local Studio using only the bundled Python
           $env:MKAI_NOBROWSER = '1'
           $p = Start-Process cmd -ArgumentList '/c', "set PATH=$sys&& cd /d $root && MK-AI.bat > C:\clean\launcher.log 2>&1" -PassThru -WindowStyle Hidden
