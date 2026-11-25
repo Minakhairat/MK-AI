@@ -74,23 +74,25 @@ jobs:
         run: |
           set +e
           S="$GITHUB_STEP_SUMMARY"
+          B(){ perl -e 'alarm 90; exec @ARGV' "$@"; }
+          SHOT(){ for t in 1 2 3; do B xcrun simctl io $DEV screenshot "$1"; r=$?; echo "screenshot $1 try$t exit=$r" | tee -a "$S"; [ $r = 0 ] && [ -s "$1" ] && return 0; done; return 1; }
           DEV=$(xcrun simctl list devices available | grep -m1 -E 'iPhone' | grep -oE '[0-9A-F-]{36}')
           echo "simulator $DEV" | tee -a "$S"
           xcrun simctl boot $DEV; perl -e 'alarm 240; exec @ARGV' xcrun simctl bootstatus $DEV -b; echo "bootstatus exit=$?" | tee -a "$S"
           APP=$(find wrap/ios/build-sim -name 'App.app' -maxdepth 6 | head -1); echo "installing $APP" | tee -a "$S"
           for t in 1 2; do perl -e 'alarm 240; exec @ARGV' xcrun simctl install $DEV "$APP"; r=$?; echo "install try$t exit=$r" | tee -a "$S"; [ $r = 0 ] && break; done; echo "install exit=$r" | tee -a "$S"
-          xcrun simctl launch $DEV com.mkai.runner 2>&1 | tee -a "$S"
+          B xcrun simctl launch $DEV com.mkai.runner 2>&1 | tee -a "$S"
           sleep 150
-          xcrun simctl spawn $DEV launchctl list 2>&1 | grep -i mkai | tee -a "$S"
-          xcrun simctl io $DEV screenshot ios-shot1.png
+          B xcrun simctl spawn $DEV launchctl list 2>&1 | grep -i mkai | tee -a "$S"
+          SHOT ios-shot1.png
           echo "--- terminate and relaunch (same install, same data)" | tee -a "$S"
-          xcrun simctl terminate $DEV com.mkai.runner; sleep 3
-          xcrun simctl launch $DEV com.mkai.runner 2>&1 | tee -a "$S"
+          B xcrun simctl terminate $DEV com.mkai.runner; sleep 3
+          B xcrun simctl launch $DEV com.mkai.runner 2>&1 | tee -a "$S"
           sleep 90
-          xcrun simctl spawn $DEV launchctl list 2>&1 | grep -i mkai | tee -a "$S"
-          xcrun simctl io $DEV screenshot ios-shot2.png
-          for n in 1 2; do sips -Z 900 -s format jpeg -s formatOptions 70 ios-shot$n.png --out ios-small$n.jpg >/dev/null; { echo "<details><summary>ios-small$n.jpg base64</summary><pre>"; base64 -i ios-small$n.jpg; echo "</pre></details>"; } >> "$S"; done
-          xcrun simctl spawn $DEV log show --last 6m --predicate 'process == "App"' 2>&1 | grep -i -E 'crash|jetsam|memory|terminated|fault' | tail -15 | cut -c1-240 | tee -a "$S"
+          B xcrun simctl spawn $DEV launchctl list 2>&1 | grep -i mkai | tee -a "$S"
+          SHOT ios-shot2.png
+          for n in 1 2; do [ -s ios-shot$n.png ] || continue; sips -Z 900 -s format jpeg -s formatOptions 70 ios-shot$n.png --out ios-small$n.jpg >/dev/null; { echo "<details><summary>ios-small$n.jpg base64</summary><pre>"; base64 -i ios-small$n.jpg; echo "</pre></details>"; } >> "$S"; done
+          B xcrun simctl spawn $DEV log show --last 6m --predicate 'process == "App"' 2>&1 | grep -i -E 'crash|jetsam|memory|terminated|fault' | tail -15 | cut -c1-240 | tee -a "$S"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
