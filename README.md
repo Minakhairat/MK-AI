@@ -43,3 +43,11 @@ An exported classifier zip must be served from a web server (do not open the fil
 https://minakhairat.github.io/MK-AI/ is built by `.github/workflows/pages.yml` when `site.version` changes. It serves the classify flow. The detect flow shows that the local trainer is not running and disables training.
 - Exported zips include `NOTICE-MODEL.txt`, `LICENSE-APACHE-2.0.txt`, `THIRD-PARTY-NOTICES.txt`, and the upstream ONNX Runtime `ORT-LICENSE-MIT.txt` and `ORT-THIRD-PARTY-NOTICES.txt` (v1.31.1, fetched at setup and hash-checked). Which third-party components are compiled into the ONNX Runtime wasm files was not verified, and none of this is legal clearance.
 - Offline detector app: it reads `detector.onnx` straight from the offline cache. Streaming the 80 MB model through the service worker crashed Chrome (headless, Linux) during inference.
+
+## Live camera and installing the exported app
+- Each exported app has a "turn on the camera" button (live classify or live detect). Browsers only allow the camera on HTTPS pages or on `localhost`; opening `index.html` from a file, or from a plain `http://` address on another machine, shows a message instead. Tested here only with Chrome's fake camera device on Linux. Not tested with a real phone camera.
+- Hosting the exported app over HTTPS is a separate step that is not decided yet. Nothing is published automatically.
+- The exported app is a web app with a manifest and icons, so browsers can offer to install it. Android APK and iOS packaging are being researched; none is built yet.
+
+## Memory
+The training memory need has not been measured on a reference machine. In a 2 GB, 1 CPU Linux sandbox the trainer used about 1.2 GB resident memory while a browser was also open. Treat that as one observation, not a requirement. If training stops, the Studio shows the trainer's exit code and last output lines.
