@@ -2,12 +2,16 @@
 import http.server,json,os,subprocess,sys,threading,time,shutil
 ROOT='studio';JOB={'state':'idle','log':[]};LOCK=threading.Lock()
 def run(zp,ep):
-    with LOCK:JOB.update(state='running',log=[])
+    with LOCK:JOB.update(state='running',log=[]);JOB.pop('error',None)
     os.makedirs('build/job',exist_ok=True)
     p=subprocess.Popen([sys.executable,'trainer/rt_pipeline.py',zp,'build/job',str(ep)],stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True)
+    tail=[]
     for l in p.stdout:
         if l.startswith('PROGRESS'):JOB['log'].append(l.strip()[9:])
-    p.wait();JOB['state']='done' if p.returncode==0 and os.path.exists('build/job/app.zip') else 'error'
+        else:tail=(tail+[l.rstrip()[:300]])[-12:]
+    p.wait();ok=p.returncode==0 and os.path.exists('build/job/app.zip')
+    if not ok:JOB['error']='trainer exit code %s (negative means killed by a signal, for example out of memory). Last output: %s'%(p.returncode,' | '.join(tail))
+    JOB['state']='done' if ok else 'error'
 class H(http.server.SimpleHTTPRequestHandler):
     def __init__(s,*a,**k):super().__init__(*a,directory=ROOT,**k)
     def do_POST(s):
