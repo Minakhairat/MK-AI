@@ -37,5 +37,5 @@ head={'classes':[n.replace('_',' ') for n in names],'D':int(D),'W':[float(v) for
 with zipfile.ZipFile(O+'/export.zip','w',zipfile.ZIP_DEFLATED) as z:z.writestr('head.json',json.dumps(head));z.write('studio/base/feat.onnx','base/feat.onnx')
 rng=np.random.default_rng(1);idx=rng.choice(len(te),200,replace=False);T=[]
 for j,i in enumerate(idx):
-    f=f'{j:03d}.jpg';Image.open(io.BytesIO(te[i]['image']['bytes'])).convert('RGB').save(O+f'/test/{f}',quality=95);T.append({'file':f,'label':int(yv[i]),'py_pred':int(pred[i])})
+    f=f'{j:03d}.jpg';Image.open(io.BytesIO(te[i]['image']['bytes'])).convert('RGB').save(O+f'/test/{f}',quality=95);T.append({'file':f,'label':int(yv[i]),'py_pred':int(pred[i]),'py_logits':[float(v) for v in (Xv[i]@W+b)]})
 json.dump({'classes':head['classes'],'images':T},open(O+'/test/truth.json','w'))
