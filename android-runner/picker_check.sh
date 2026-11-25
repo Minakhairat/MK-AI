@@ -16,10 +16,15 @@ for n in ET.parse('ui.xml').iter('node'):
 sys.exit(1)
 PY
 }
-xy=$(tapnode 'zip') && { echo "import button at $xy" >> $E; adb shell input tap $xy; } || echo "import button not found" >> $E
+# the import button is WebView content that uiautomator cannot see: tap its position (measured on the emulator screenshot: about 73% across, 40% down)
+read W H < <(adb shell wm size | grep -o '[0-9]*x[0-9]*' | tail -1 | tr x ' ')
+X=$((W*73/100)); Y=$((H*40/100)); echo "screen ${W}x${H}, tapping import button at $X $Y" >> $E; adb exec-out screencap -p > picker-0.png
+adb shell input tap $X $Y
 sleep 6; adb exec-out screencap -p > picker-1.png
 adb shell uiautomator dump /sdcard/ui.xml >/dev/null 2>&1; adb pull /sdcard/ui.xml picker-picker-ui.xml >/dev/null 2>&1
-xy=$(tapnode 'pick-test') && { echo "file entry at $xy" >> $E; adb shell input tap $xy; } || echo "file entry not found in picker" >> $E
+for t in pick-test Downloads pick-test; do
+ xy=$(tapnode "$t") && { echo "tapped '$t' at $xy" >> $E; adb shell input tap $xy; sleep 3; } || echo "'$t' not found in picker" >> $E
+done
 sleep 12; adb exec-out screencap -p > picker-2.png
 adb logcat -d | grep -E 'MKAI_|Capacitor/Console' | tail -20 | sed 's/^.*Console: //' >> $E
 cat $E >> "${GITHUB_STEP_SUMMARY:-/dev/null}"
