@@ -28,5 +28,7 @@ torch.onnx.export(Wr(m).eval(),(torch.rand(1,3,320,320),),app+'/detector.onnx',o
 json.dump({'task':'detect','classes':meta['classes'],'size':320,'score_threshold':0.5},open(app+'/model.json','w'))
 # refresh service worker file list
 fl=['./'+f for f in sorted(os.listdir(app)) if f!='sw.js']+['./']
-open(app+'/sw.js','w').write("const C='mkai-det-v1';const F=%s;self.addEventListener('install',e=>e.waitUntil(caches.open(C).then(c=>c.addAll(F))));self.addEventListener('fetch',e=>e.respondWith(caches.match(e.request).then(r=>r||fetch(e.request))));"%json.dumps(fl))
+import uuid;aid=uuid.uuid4().hex[:10]
+json.dump({'name':'MK AI detector '+aid,'short_name':'MK AI '+aid[:4],'id':'mkai-det-'+aid,'start_url':'./','display':'standalone','icons':[]},open(app+'/manifest.json','w'))
+open(app+'/sw.js','w').write("const C='mkai-det-"+aid+"';const F=%s;self.addEventListener('install',e=>e.waitUntil(caches.open(C).then(c=>c.addAll(F))));self.addEventListener('fetch',e=>e.respondWith(caches.match(e.request).then(r=>r||fetch(e.request))));"%json.dumps(fl))
 shutil.make_archive(out+'/app','zip',app);print('PROGRESS done',flush=True)
