@@ -34,7 +34,8 @@ jobs:
           npx cap init "MK AI Runner" com.mkai.runner --web-dir www
           npx cap add ios
           /usr/libexec/PlistBuddy -c "Add :NSCameraUsageDescription string MK AI uses the camera to run your model on live frames." ios/App/App/Info.plist
-          python ../android-runner/ios_icon.py ios/App/App/Assets.xcassets/AppIcon.appiconset/AppIcon-512@2x.png ../brand/icons.json || true
+          python ../android-runner/ios_icon.py ios/App/App/Assets.xcassets/AppIcon.appiconset/AppIcon-512@2x.png ../brand/icons.json
+          test -s ios/App/App/Assets.xcassets/AppIcon.appiconset/AppIcon-512@2x.png && python3 -c "import struct;d=open('ios/App/App/Assets.xcassets/AppIcon.appiconset/AppIcon-512@2x.png','rb').read(32);print('icon png',struct.unpack('>II',d[16:24]))" | tee -a "$GITHUB_STEP_SUMMARY"
           ls ios/App/App/Assets.xcassets/AppIcon.appiconset
           npx cap sync ios
       - name: Build for the iOS Simulator and for a device, both with code signing OFF (real exit codes, errors printed)
@@ -42,10 +43,10 @@ jobs:
           cd wrap/ios/App
           S="$GITHUB_STEP_SUMMARY"
           xcodebuild -version | tee -a "$S"
-          xcodebuild -project App.xcodeproj -scheme App -configuration Debug -sdk iphonesimulator -derivedDataPath ../build-sim CODE_SIGNING_ALLOWED=NO build > ../sim-build.log 2>&1; echo "simulator xcodebuild exit=$?" | tee -a "$S"
-          grep -E "error:|BUILD (SUCCEEDED|FAILED)" ../sim-build.log | head -15 | tee -a "$S"
-          xcodebuild -project App.xcodeproj -scheme App -configuration Release -sdk iphoneos -derivedDataPath ../build-dev CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO build > ../dev-build.log 2>&1; echo "device xcodebuild exit=$?" | tee -a "$S"
-          grep -E "error:|BUILD (SUCCEEDED|FAILED)" ../dev-build.log | head -15 | tee -a "$S"
+          RC=0; xcodebuild -project App.xcodeproj -scheme App -configuration Debug -sdk iphonesimulator -derivedDataPath ../build-sim CODE_SIGNING_ALLOWED=NO build > ../sim-build.log 2>&1 || RC=$?; echo "simulator xcodebuild exit=$RC" | tee -a "$S"
+          { grep -E "error:|BUILD (SUCCEEDED|FAILED)|\*\* " ../sim-build.log | head -15; echo '--- last lines'; tail -12 ../sim-build.log; } 2>&1 | cut -c1-300 | tee -a "$S"
+          RC=0; xcodebuild -project App.xcodeproj -scheme App -configuration Release -sdk iphoneos -derivedDataPath ../build-dev CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO build > ../dev-build.log 2>&1 || RC=$?; echo "device xcodebuild exit=$RC" | tee -a "$S"
+          { grep -E "error:|BUILD (SUCCEEDED|FAILED)|\*\* " ../dev-build.log | head -15; echo '--- last lines'; tail -12 ../dev-build.log; } 2>&1 | cut -c1-300 | tee -a "$S"
           echo '--- .app bundles found' | tee -a "$S"; find ../build-sim ../build-dev -name '*.app' -maxdepth 6 | tee -a "$S"
           for A in $(find ../build-dev -name 'App.app' -maxdepth 6 | head -1) $(find ../build-sim -name 'App.app' -maxdepth 6 | head -1); do
             { echo "--- $A"; ls -la "$A" | head -20; file "$A/App"; lipo -info "$A/App"; plutil -p "$A/Info.plist" | grep -E 'CFBundleIdentifier|CFBundleExecutable|MinimumOSVersion|DTPlatformName'; codesign -dv "$A" 2>&1 | head -3; } 2>&1 | tee -a "$S"
@@ -70,5 +71,8 @@ jobs:
         if: always()
         with:
           name: ios-evidence
-          path: ios-shot.png
+          path: |
+            ios-shot.png
+            wrap/ios/sim-build.log
+            wrap/ios/dev-build.log
           if-no-files-found: ignore
