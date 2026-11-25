@@ -105,6 +105,67 @@ jobs:
           if grep -i 'bloodcell\|blood\|oxford\|benchmark\|app\.zip\|best\.' /tmp/audit.txt; then echo 'AUDIT FAIL: dataset or trained artifact found'; exit 1; fi
           if [ -d $P/build/job ] || [ -d $P/data ]; then echo 'AUDIT FAIL'; exit 1; fi
           echo "AUDIT OK: only pretrained backbones/template assets"
+      - name: Dependency, VC++ runtime and licence review
+        run: |
+          set -e
+          pip install pefile >/dev/null
+          P=pkg/MK-AI
+          # backbone licence material: Apache-2.0 text + the model card as downloaded
+          cp "$(ls $P/python/Lib/site-packages/transformers-*.dist-info/licenses/LICENSE 2>/dev/null | head -1)" $P/licenses/APACHE-2.0.txt || cp $(find $P/python/Lib/site-packages -maxdepth 3 -ipath '*transformers*' -iname 'LICENSE*' | head -1) $P/licenses/APACHE-2.0.txt
+          head -3 $P/licenses/APACHE-2.0.txt
+          cp $(find $P/hf -iname 'README.md' | head -1) $P/licenses/PekingU-rtdetr_r18vd-MODEL-CARD.md
+          cat > /tmp/audit.py <<'PYEOF'
+          import pefile,os,glob,shutil,re,collections,sys
+          root='pkg/MK-AI'
+          def scan():
+              have={}
+              for dp,_,fs in os.walk(root):
+                  for f in fs:
+                      if f.lower().endswith(('.dll','.pyd','.exe')): have.setdefault(f.lower(),os.path.join(dp,f))
+              need=collections.defaultdict(set)
+              for n,path in have.items():
+                  try:
+                      pe=pefile.PE(path,fast_load=True);pe.parse_data_directories(directories=[1])
+                      for e in getattr(pe,'DIRECTORY_ENTRY_IMPORT',[]):need[e.dll.decode().lower()].add(n)
+                  except Exception as ex: print('skip',path,ex)
+              return have,need
+          VC=re.compile(r'^(msvcp\d+|vcruntime\d+(_\d+)?|concrt\d+|vcomp\d+|vcamp\d+|msvcr\d+)(_\d+)?\.dll$')
+          def classify(have,need):
+              out=collections.defaultdict(list)
+              for d in sorted(need):
+                  if d in have: continue
+                  if d.startswith(('api-ms-win-','ext-ms-win-')) or d=='ucrtbase.dll': out['UCRT_or_apiset'].append(d)
+                  elif VC.match(d): out['VC_RUNTIME_NOT_BUNDLED'].append(d)
+                  elif os.path.exists('C:/Windows/System32/'+d): out['windows_system'].append(d)
+                  else: out['UNRESOLVED'].append(d)
+              return out
+          have,need=scan();c=classify(have,need)
+          print('BEFORE bundling:',{k:v for k,v in c.items() if k!='windows_system'})
+          print('windows_system DLLs used:',c.get('windows_system'))
+          redist=glob.glob(r'C:\Program Files\Microsoft Visual Studio\*\*\VC\Redist\MSVC\*\x64\Microsoft.VC*.*\*.dll')
+          print('redist candidates',len(redist),redist[:3])
+          idx={os.path.basename(f).lower():f for f in redist}
+          for d in c.get('VC_RUNTIME_NOT_BUNDLED',[]):
+              if d in idx:
+                  for dst in (root+'/python', root+'/python/Lib/site-packages/torch/lib'):
+                      if os.path.isdir(dst): shutil.copy(idx[d],dst)
+                  print('bundled',d,'from',idx[d])
+              else: print('NOT FOUND in redist:',d)
+          have,need=scan();c=classify(have,need)
+          print('AFTER bundling:',{k:v for k,v in c.items() if k!='windows_system'})
+          if c.get('UNRESOLVED'): print('UNRESOLVED deps (inspect, may be delay-load or optional):',c['UNRESOLVED'])
+          if c.get('VC_RUNTIME_NOT_BUNDLED'): print('DEP AUDIT FAIL');sys.exit(1)
+          print('DEP AUDIT OK: remaining external deps are Windows system DLLs and the Universal CRT (built in to Windows 10/11)')
+          PYEOF
+          python /tmp/audit.py
+          echo '--- torch/lib DLLs:'; ls $P/python/Lib/site-packages/torch/lib/*.dll | xargs -n1 basename | tr '\n' ' '; echo
+          echo '--- licence review: licence files per package with copyleft/non-commercial keyword hits'
+          cd $P/licenses/python-packages
+          for d in *; do for f in $d/*; do h=$(grep -il -E 'GNU (Lesser |Affero )?General Public|LGPL|AGPL|non-?commercial|CC-BY-NC|academic use only|research use only' "$f" 2>/dev/null || true); [ -n "$h" ] && echo "KEYWORD HIT: $f"; done; done
+          echo '--- first licence line of each package'; for d in *; do f=$(ls $d | head -1); echo "$d : $(grep -v '^\s*$' "$d/$f" | head -1 | cut -c1-90)"; done
+          cd - >/dev/null
+          cat $P/licenses/PACKAGES.txt | head -80
+          find $P/hf -type f -printf '%s %p\n' | sort -k2 | head -20
       - name: Zip (not uploaded anywhere)
         run: |
           cd pkg && 7z a -tzip -mx=5 ../MK-AI-Windows-portable.zip MK-AI >/dev/null
@@ -153,6 +214,8 @@ jobs:
           Set-Location $root
           & "$root\python\python.exe" -c "import sys,torch,transformers,onnxruntime;print(sys.version);print('torch',torch.__version__)"
           if ($LASTEXITCODE -ne 0) { throw "python import check exit $LASTEXITCODE" }
+          Set-Content C:\clean\mods.py "import ctypes,ctypes.wintypes as w,os`nimport torch,transformers,onnxruntime`nfrom transformers import RTDetrForObjectDetection`nk=ctypes.WinDLL('kernel32');ps=ctypes.WinDLL('psapi')`nk.GetCurrentProcess.restype=w.HANDLE`nh=k.GetCurrentProcess();arr=(w.HMODULE*2048)();n=w.DWORD()`nps.EnumProcessModules(h,arr,ctypes.sizeof(arr),ctypes.byref(n))`nbuf=ctypes.create_unicode_buffer(1024);bad=[]`nfor i in range(n.value//ctypes.sizeof(w.HMODULE)):`n    ps.GetModuleFileNameExW(h,arr[i],buf,1024);p=buf.value;b=os.path.basename(p).lower()`n    if b.startswith(('msvcp','vcruntime','concrt','vcomp')):`n        print('VCRT',p)`n        if not p.lower().startswith('c:\\clean'): bad.append(p)`nprint('VCRT_FROM_SYSTEM:',bad)"
+          & "$root\python\python.exe" C:\clean\mods.py
           & "$root\python\python.exe" trainer\selftest.py
           if ($LASTEXITCODE -ne 0) { throw "selftest exit $LASTEXITCODE" }
           Write-Host 'clean-machine detector self-test OK (synthetic data, pipeline check only)'
