@@ -64,7 +64,9 @@ if (-not (Test-Path "$py\python.exe")) {
   $zip = Join-Path $env:TEMP 'python-embed.zip'
   Invoke-WebRequest 'https://www.python.org/ftp/python/3.12.10/python-3.12.10-embed-amd64.zip' -OutFile $zip
   if ((Sha256 $zip) -ne '4acbed6dd1c744b0376e3b1cf57ce906f9dc9e95e68824584c8099a63025a3c3') { throw 'Python download SHA-256 mismatch' }
-  Expand-Archive $zip -DestinationPath $py -Force
+  Add-Type -AssemblyName System.IO.Compression.FileSystem
+  if (Test-Path $py) { Remove-Item $py -Recurse -Force }
+  [IO.Compression.ZipFile]::ExtractToDirectory($zip, $py)
   $sig = Get-AuthenticodeSignature "$py\python.exe"
   if ($sig.Status -ne 'Valid' -or $sig.SignerCertificate.Subject -notmatch 'Python Software Foundation') { throw "Python signature check failed ($($sig.Status))" }
   Say 'Python SHA-256 and Python Software Foundation signature verified.'
