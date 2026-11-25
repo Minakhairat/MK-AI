@@ -24,14 +24,14 @@ jobs:
           pip install -r requirements.txt
           npm install && npm run setup
           python trainer/selftest.py
-      - name: Build the runner APK (Capacitor 7 debug build) with a CI-only bundled test export
+      - name: Build the runner APKs (Capacitor 7 debug). Clean APK has no test files; test APK adds CI-only bundled synthetic export zips
         run: |
+          pip install onnx
+          python android-runner/prep_classify_zip.py studio/base/feat.onnx build/test-classify.zip
+          cp build/selftest/out/app.zip build/test-detect.zip
           mkdir -p wrap/www && cd wrap
           cp ../android-runner/www/* www/
-          cp ../studio/jszip.min.js www/
-          python ../android-runner/prep_test_zip.py ../build/selftest/out/app.zip www/test-export.zip
-          sed -i 's#<script src="jszip.min.js">#<script>window.MKAI_TEST=1</script><script src="jszip.min.js">#' www/index.html
-          ls -la www
+          cp ../studio/jszip.min.js ../studio/ort.min.js ../studio/ort-wasm-simd-threaded*.mjs ../studio/ort-wasm-simd-threaded*.wasm www/
           npm init -y >/dev/null
           npm i @capacitor/core@7 @capacitor/cli@7 @capacitor/android@7
           npx cap init "MK AI Runner" com.mkai.runner --web-dir www
@@ -39,17 +39,25 @@ jobs:
           sed -i 's#<application#<uses-permission android:name="android.permission.CAMERA" />\n    <uses-feature android:name="android.hardware.camera" android:required="false" />\n    <application#' android/app/src/main/AndroidManifest.xml
           python ../android-runner/icons.py android/app/src/main/res ../brand/icons.json
           npx cap sync android
-          cd android && ./gradlew assembleDebug --no-daemon
-          ls -la app/build/outputs/apk/debug/
+          ls -la www
+          (cd android && ./gradlew assembleDebug --no-daemon)
+          mkdir -p ../apks && cp android/app/build/outputs/apk/debug/app-debug.apk ../apks/runner-clean.apk
+          cp ../build/test-classify.zip ../build/test-detect.zip www/
+          echo "window.MKAI_TEST=['test-detect.zip','test-classify.zip'];" > www/test-config.js
+          sed -i 's#<script src="runner.js">#<script src="test-config.js"></script><script src="runner.js">#' www/index.html
+          npx cap sync android
+          (cd android && ./gradlew assembleDebug --no-daemon)
+          cp android/app/build/outputs/apk/debug/app-debug.apk ../apks/runner-test.apk
+          ls -la ../apks
       - uses: actions/upload-artifact@v4
         with:
           name: mkai-runner-debug-apk
-          path: wrap/android/app/build/outputs/apk/debug/app-debug.apk
+          path: apks/runner-clean.apk
       - name: Enable KVM
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
           sudo udevadm control --reload-rules && sudo udevadm trigger --name-match=kvm
-      - name: "Run in an Android emulator (WebView), offline inference check from logcat"
+      - name: "Emulator: offline test APK (airplane mode), both export types, camera frames, then the real file picker"
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 33
@@ -57,12 +65,18 @@ jobs:
           target: google_apis
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back virtualscene
-          script: APP_ID=com.mkai.runner bash android-runner/emulator_check.sh
+          script: bash -c 'APK=apks/runner-test.apk bash android-runner/emulator_check.sh; r=$?; APK=apks/runner-clean.apk ZIP=build/test-detect.zip bash android-runner/picker_check.sh; exit $r'
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: runner-emulator-screens
+          name: runner-emulator-evidence
           path: |
             emu-shot.png
             emu-home.png
+            evidence.txt
+            mkai_log.txt
+            picker-1.png
+            picker-2.png
+            picker-evidence.txt
+            picker-picker-ui.xml
           if-no-files-found: ignore
