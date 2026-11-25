@@ -23,9 +23,9 @@ jobs:
         with: { python-version: '3.12' }
       - name: Prepare studio assets (Node is needed only here, not in the package)
         run: |
-          npm install && npm run setup
           pip install torch==2.6.0 torchvision==0.21.0 --index-url https://download.pytorch.org/whl/cpu
           pip install -r requirements.txt
+          npm install && npm run setup
       - name: Assemble the portable folder (embedded Python 3.12, offline packages, pretrained model)
         run: |
           set -e
