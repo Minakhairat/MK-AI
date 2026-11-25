@@ -35,7 +35,7 @@ if ($interactive -or $env:MKAI_ASSUME_YES -ne '1') {
   if ($needPy) {
     Write-Host '  - Python 3.12.10 (python.org, about 10 MB), checked by SHA-256 and the Python Software Foundation signature'
     Write-Host '  - pip (pypi.org, pinned and checked by SHA-256)'
-    Write-Host '  - PyTorch CPU (download.pytorch.org) and libraries from pypi.org, about 1 to 2 GB, installed inside this folder only'
+    Write-Host '  - PyTorch CPU (download.pytorch.org) and libraries from pypi.org, a large download (the finished folder is about 2 GB on disk), installed inside this folder only'
   }
   if ($needHf) { Write-Host '  - Detector starting model PekingU/rtdetr_r18vd (huggingface.co, about 80 MB, pinned revision)' }
   Write-Host '  Needs about 4 GB of free disk. Nothing is installed system-wide except the Microsoft component above.'
