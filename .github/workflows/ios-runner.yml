@@ -30,7 +30,8 @@ jobs:
           cp ../android-runner/www/* www/
           cp ../studio/jszip.min.js ../studio/ort.min.js ../studio/ort-wasm-simd-threaded*.mjs ../studio/ort-wasm-simd-threaded*.wasm www/
           cp ../build/test-classify.zip ../build/test-detect.zip www/
-          echo "window.MKAI_TEST=['test-classify.zip','test-detect.zip'];" > www/test-config.js
+          echo "window.MKAI_TEST=localStorage.getItem('ci_launch')?undefined:['test-classify.zip','test-detect.zip'];" > www/test-config.js
+          cp ../android-runner/ios/ci-relaunch.js www/
           cat > www/ci-out.js <<'JS'
           (function(){const o=document.createElement('pre');o.id='ciout';o.style.cssText='white-space:pre-wrap;font:12px monospace;color:#9f9;direction:ltr;text-align:left;border-top:1px solid #444;margin-top:12px';document.body.appendChild(o);const l=console.log;console.log=function(){l.apply(console,arguments);const m=String(arguments[0]);if(/MKAI_/.test(m))o.textContent+=m.replace(/^.*MKAI_/,'MKAI_')+'\n';};window.addEventListener('error',e=>{o.textContent+='JSERROR '+e.message+'\n';});})();
           const of=window.fetch;window.fetch=function(u){const s=String(u);if(/test-(classify|detect)\.zip$/.test(s))return new Promise((res,rej)=>{const x=new XMLHttpRequest();x.open('GET',s);x.responseType='blob';x.onload=()=>res({blob:()=>Promise.resolve(x.response)});x.onerror=()=>rej(new Error('xhr fail'));x.send();});return of.apply(this,arguments);};
@@ -39,7 +40,7 @@ jobs:
           # iOS-only files (the shared runner source and the Android APK are NOT changed)
           cp ../android-runner/ios/ios-compat.js www/
           echo "body{padding-top:env(safe-area-inset-top);padding-bottom:env(safe-area-inset-bottom)}" > www/ios-safe.css
-          sed -i '' 's#width=device-width,initial-scale=1#width=device-width,initial-scale=1,viewport-fit=cover#; s#<link rel="stylesheet" href="runner.css">#<link rel="stylesheet" href="runner.css"><link rel="stylesheet" href="ios-safe.css">#; s#<script src="runner.js">#<script src="ci-out.js"></script><script src="ios-compat.js"></script><script src="test-config.js"></script><script src="runner.js">#' www/index.html
+          sed -i '' 's#width=device-width,initial-scale=1#width=device-width,initial-scale=1,viewport-fit=cover#; s#<link rel="stylesheet" href="runner.css">#<link rel="stylesheet" href="runner.css"><link rel="stylesheet" href="ios-safe.css">#; s#<script src="runner.js">#<script src="ci-out.js"></script><script src="ios-compat.js"></script><script src="test-config.js"></script><script src="ci-relaunch.js"></script><script src="runner.js">#' www/index.html
           grep -c "ios-safe.css" www/index.html; grep -c "viewport-fit=cover" www/index.html
           npm init -y >/dev/null
           npm i @capacitor/core@7 @capacitor/cli@7 @capacitor/ios@7
@@ -68,7 +69,7 @@ jobs:
         run: |
           cd wrap/ios
           [ "$(cat sim.rc)" = 0 ] && [ "$(cat dev.rc)" = 0 ] && test -f build-sim/Build/Products/Debug-iphonesimulator/App.app/App && test -f build-dev/Build/Products/Release-iphoneos/App.app/App || { echo "iOS build failed or no executable: sim.rc=$(cat sim.rc) dev.rc=$(cat dev.rc)" | tee -a "$GITHUB_STEP_SUMMARY"; exit 1; }
-      - name: Run in the iOS Simulator and screenshot
+      - name: Run in the iOS Simulator, screenshot, RELAUNCH, screenshot again
         run: |
           set +e
           S="$GITHUB_STEP_SUMMARY"
@@ -78,18 +79,24 @@ jobs:
           APP=$(find wrap/ios/build-sim -name 'App.app' -maxdepth 6 | head -1); echo "installing $APP" | tee -a "$S"
           xcrun simctl install $DEV "$APP"; echo "install exit=$?" | tee -a "$S"
           xcrun simctl launch $DEV com.mkai.runner 2>&1 | tee -a "$S"
-          for t in 15 45; do sleep $t; echo "t+$t listing:" | tee -a "$S"; xcrun simctl spawn $DEV launchctl list 2>&1 | grep -i mkai | tee -a "$S"; done
-          xcrun simctl io $DEV screenshot ios-shot.png
-          sips -Z 900 -s format jpeg -s formatOptions 70 ios-shot.png --out ios-small.jpg >/dev/null
-          { echo "<details><summary>ios-small.jpg base64</summary><pre>"; base64 -i ios-small.jpg; echo "</pre></details>"; } >> "$S"
-          ls ~/Library/Logs/DiagnosticReports 2>&1 | head -5 | tee -a "$S"
-          xcrun simctl spawn $DEV log show --last 2m --predicate 'process == "App" OR subsystem CONTAINS "mkai" OR eventMessage CONTAINS "MKAI"' 2>&1 | tail -25 | cut -c1-240 | tee -a "$S"
+          sleep 150
+          xcrun simctl spawn $DEV launchctl list 2>&1 | grep -i mkai | tee -a "$S"
+          xcrun simctl io $DEV screenshot ios-shot1.png
+          echo "--- terminate and relaunch (same install, same data)" | tee -a "$S"
+          xcrun simctl terminate $DEV com.mkai.runner; sleep 3
+          xcrun simctl launch $DEV com.mkai.runner 2>&1 | tee -a "$S"
+          sleep 90
+          xcrun simctl spawn $DEV launchctl list 2>&1 | grep -i mkai | tee -a "$S"
+          xcrun simctl io $DEV screenshot ios-shot2.png
+          for n in 1 2; do sips -Z 900 -s format jpeg -s formatOptions 70 ios-shot$n.png --out ios-small$n.jpg >/dev/null; { echo "<details><summary>ios-small$n.jpg base64</summary><pre>"; base64 -i ios-small$n.jpg; echo "</pre></details>"; } >> "$S"; done
+          xcrun simctl spawn $DEV log show --last 6m --predicate 'process == "App"' 2>&1 | grep -i -E 'crash|jetsam|memory|terminated|fault' | tail -15 | cut -c1-240 | tee -a "$S"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: ios-evidence
           path: |
-            ios-shot.png
+            ios-shot1.png
+            ios-shot2.png
             wrap/ios/sim-build.log
             wrap/ios/dev-build.log
           if-no-files-found: ignore
