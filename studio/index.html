@@ -7,7 +7,7 @@
 <pre id="log"></pre>
 <script src="tf.min.js"></script><script src="jszip.min.js"></script>
 <script>
-const classes=[];let feat,head=null;const log=t=>logEl.textContent+=t+'\n';const logEl=document.getElementById('log');
+const BUCKET='https://storage.googleapis.com/tfjs-models/tfjs/mobilenet_v1_0.25_224/';const classes=[];let feat,head=null;const log=t=>logEl.textContent+=t+'\n';const logEl=document.getElementById('log');
 function addClass(name){const idx=classes.length;classes.push({name,imgs:[]});
  const d=document.createElement('div');d.innerHTML=`<p><input class="nm" value="${name}"> <input type="file" class="fi" accept="image/*" multiple capture="environment"> <span class="cnt">0 صورة</span></p>`;
  d.querySelector('.nm').oninput=e=>classes[idx].name=e.target.value;
@@ -15,7 +15,7 @@ function addClass(name){const idx=classes.length;classes.push({name,imgs:[]});
  document.getElementById('classes').appendChild(d);}
 document.getElementById('add').onclick=()=>addClass('class'+(classes.length+1));addClass('class1');addClass('class2');
 const emb=el=>tf.tidy(()=>feat.predict(tf.browser.fromPixels(el).resizeBilinear([224,224]).toFloat().div(127.5).sub(1).expandDims(0)).mean([1,2]));
-(async()=>{const full=await tf.loadLayersModel('base/model.json');feat=tf.model({inputs:full.inputs,outputs:full.getLayer('conv_pw_13_relu').output});st.textContent='النموذج الأساسي جاهز';train.disabled=false;window.studioReady=true;})();
+(async()=>{let baseURL='base/';try{const r=await fetch('base/model.json',{method:'HEAD'});if(!r.ok)throw 0;}catch(e){baseURL=BUCKET;}window.baseURL=baseURL;const full=await tf.loadLayersModel(baseURL+'model.json');feat=tf.model({inputs:full.inputs,outputs:full.getLayer('conv_pw_13_relu').output});st.textContent='النموذج الأساسي جاهز';train.disabled=false;window.studioReady=true;})();
 document.getElementById('train').onclick=async()=>{
  const n=classes.length;const X=[],Y=[];classes.forEach((c,ci)=>c.imgs.forEach(im=>{X.push(emb(im));Y.push(ci);}));
  if(X.length<n*2){log('محتاج صورتين على الأقل لكل فئة');return;}
@@ -27,7 +27,7 @@ document.getElementById('train').onclick=async()=>{
 const export_=document.getElementById('export');
 export_.onclick=async()=>{const w=head.getWeights();const H={task:'classify',classes:classes.map(c=>c.name),D:w[0].shape[0],W:Array.from(await w[0].data()),b:Array.from(await w[1].data())};
  const z=new JSZip();const files=(await (await fetch('template/files.json')).json());
- for(const f of files){z.file(f,await (await fetch('template/'+f)).arrayBuffer());}
+ for(const f of files){const u=(f.startsWith('base/')&&window.baseURL===BUCKET)?BUCKET+f.slice(5):'template/'+f;z.file(f,await (await fetch(u)).arrayBuffer());}
  z.file('head.json',JSON.stringify(H));const blob=await z.generateAsync({type:'blob'});
  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='mkai-app.zip';a.click();log('تم التصدير');window.exported=true;};
 </script></body></html>
