@@ -84,7 +84,9 @@ if ($env:MKAI_SMOKE -eq '1') {
   & "$py\python.exe" -m pip --version; if ($LASTEXITCODE -ne 0) { throw 'pip not usable' }
   & "$py\python.exe" -m pip install --no-warn-script-location --index-url https://download.pytorch.org/whl/cpu --extra-index-url https://pypi.org/simple huggingface_hub; if ($LASTEXITCODE -ne 0) { throw 'smoke pip install failed' }
   $env:HF_HUB_CACHE = "$root\hf"
-  & "$py\python.exe" -c "from huggingface_hub import hf_hub_download as d; print(d('PekingU/rtdetr_r18vd','config.json',revision='ac77a11ff0170a41b771c03264987f8ce2b0d753'))"; if ($LASTEXITCODE -ne 0) { throw 'smoke model fetch failed' }
+  & "$py\python.exe" -c "import os; from huggingface_hub import snapshot_download as s; p=s('PekingU/rtdetr_r18vd', revision='ac77a11ff0170a41b771c03264987f8ce2b0d753', allow_patterns=['config.json']); r=os.path.join(os.environ['HF_HUB_CACHE'],'models--PekingU--rtdetr_r18vd','refs'); os.makedirs(r,exist_ok=True); open(os.path.join(r,'main'),'w').write('ac77a11ff0170a41b771c03264987f8ce2b0d753'); print(p)"; if ($LASTEXITCODE -ne 0) { throw 'smoke model fetch failed' }
+  $env:HF_HUB_OFFLINE = '1'
+  & "$py\python.exe" -c "from huggingface_hub import hf_hub_download as d; print(d('PekingU/rtdetr_r18vd','config.json'))"; if ($LASTEXITCODE -ne 0) { throw 'offline lookup by repo name failed' }
   Say 'SMOKE OK (python, pip, a library install and a pinned-model file fetch; PyTorch and full model skipped)'; exit 0
 }
 # 3) Libraries from PyTorch.org and PyPI (versions pinned in constraints.txt, the set proven by our Windows CI)
@@ -98,7 +100,7 @@ if ($needPy) {
 if ($needHf) {
   Say 'Downloading the detector starting model from Hugging Face...'
   $env:HF_HUB_CACHE = "$root\hf"
-  & "$py\python.exe" -c "from huggingface_hub import snapshot_download as s; print(s('PekingU/rtdetr_r18vd', revision='ac77a11ff0170a41b771c03264987f8ce2b0d753'))"
+  & "$py\python.exe" -c "import os; from huggingface_hub import snapshot_download as s; p=s('PekingU/rtdetr_r18vd', revision='ac77a11ff0170a41b771c03264987f8ce2b0d753'); r=os.path.join(os.environ['HF_HUB_CACHE'],'models--PekingU--rtdetr_r18vd','refs'); os.makedirs(r,exist_ok=True); open(os.path.join(r,'main'),'w').write('ac77a11ff0170a41b771c03264987f8ce2b0d753'); print(p)"
   if ($LASTEXITCODE -ne 0) { throw 'model download failed' }
   New-Item "$root\hf\.backbone-done" -ItemType File | Out-Null
 }
