@@ -1,0 +1,65 @@
+name: ios-runner
+on:
+  workflow_dispatch:
+  push:
+    paths: ['ios.version']
+concurrency:
+  group: ios-runner
+  cancel-in-progress: true
+jobs:
+  ios:
+    runs-on: macos-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.11' }
+      - name: Assets and the CI-only synthetic classify test zip (pipeline check only)
+        run: |
+          pip install torch==2.6.0 -r requirements.txt
+          npm install && npm run setup
+          python android-runner/prep_classify_zip.py studio/base/feat.onnx build/test-classify.zip
+      - name: Generate the native iOS project (Capacitor 7), unsigned
+        run: |
+          mkdir -p wrap/www && cd wrap
+          cp ../android-runner/www/* www/
+          cp ../studio/jszip.min.js ../studio/ort.min.js ../studio/ort-wasm-simd-threaded*.mjs ../studio/ort-wasm-simd-threaded*.wasm www/
+          cp ../build/test-classify.zip www/
+          echo "window.MKAI_TEST=['test-classify.zip'];" > www/test-config.js
+          sed -i '' 's#<script src="runner.js">#<script src="test-config.js"></script><script src="runner.js">#' www/index.html
+          npm init -y >/dev/null
+          npm i @capacitor/core@7 @capacitor/cli@7 @capacitor/ios@7
+          npx cap init "MK AI Runner" com.mkai.runner --web-dir www
+          npx cap add ios
+          /usr/libexec/PlistBuddy -c "Add :NSCameraUsageDescription string MK AI uses the camera to run your model on live frames." ios/App/App/Info.plist
+          python ../android-runner/ios_icon.py ios/App/App/Assets.xcassets/AppIcon.appiconset/AppIcon-512@2x.png ../brand/icons.json || true
+          ls ios/App/App/Assets.xcassets/AppIcon.appiconset
+          npx cap sync ios
+      - name: Build for the iOS Simulator and for a device, both with code signing OFF
+        run: |
+          cd wrap/ios/App
+          xcodebuild -version | tee -a "$GITHUB_STEP_SUMMARY"
+          xcodebuild -project App.xcodeproj -scheme App -configuration Debug -sdk iphonesimulator -derivedDataPath ../build-sim CODE_SIGNING_ALLOWED=NO build | tail -5
+          xcodebuild -project App.xcodeproj -scheme App -configuration Release -sdk iphoneos -derivedDataPath ../build-dev CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO build | tail -5
+          ls ../build-dev/Build/Products/Release-iphoneos/ | tee -a "$GITHUB_STEP_SUMMARY"
+          codesign -dv ../build-dev/Build/Products/Release-iphoneos/App.app 2>&1 | tee -a "$GITHUB_STEP_SUMMARY" || true
+      - name: Run in the iOS Simulator and screenshot
+        run: |
+          set +e
+          DEV=$(xcrun simctl list devices available | grep -m1 -E 'iPhone' | grep -oE '[0-9A-F-]{36}')
+          echo "simulator $DEV" | tee -a "$GITHUB_STEP_SUMMARY"
+          xcrun simctl boot $DEV; xcrun simctl bootstatus $DEV -b
+          xcrun simctl install $DEV wrap/ios/build-sim/Build/Products/Debug-iphonesimulator/App.app
+          xcrun simctl launch $DEV com.mkai.runner
+          sleep 45
+          xcrun simctl io $DEV screenshot ios-shot.png
+          { echo "<details><summary>ios-shot.png base64</summary><pre>"; base64 -i ios-shot.png; echo "</pre></details>"; } >> "$GITHUB_STEP_SUMMARY"
+          ls -la ios-shot.png
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ios-evidence
+          path: ios-shot.png
+          if-no-files-found: ignore
