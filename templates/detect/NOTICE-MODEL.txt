@@ -1,0 +1,8 @@
+Model: RT-DETR r18vd (PekingU/rtdetr_r18vd), from https://huggingface.co/PekingU/rtdetr_r18vd
+Revision: ac77a11ff0170a41b771c03264987f8ce2b0d753
+Model card license: Apache-2.0 (https://www.apache.org/licenses/LICENSE-2.0). Code repository: https://github.com/lyuwenyu/RT-DETR (Apache-2.0 LICENSE file). Paper: https://arxiv.org/abs/2304.08069
+Model card says the checkpoint was trained on COCO 2017 object detection (https://cocodataset.org). Credits: Yian Zhao, Sangbum Choi and the RT-DETR authors; loaded through Hugging Face transformers (Apache-2.0).
+Modified by MK AI: the detection head was re-initialised for your classes and fine-tuned on your images (the backbone stays frozen), then exported to ONNX as detector.onnx.
+Effect of the COCO dataset terms on the weights is an open uncertainty, not assessed here.
+Runtime: onnxruntime-web (ort.min.js and ort-wasm-*), license field in its package.json: MIT.
+LICENSE-APACHE-2.0.txt in this folder is the Apache License 2.0 text.
