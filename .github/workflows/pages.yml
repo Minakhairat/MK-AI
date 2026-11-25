@@ -1,0 +1,39 @@
+name: pages
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+concurrency:
+  group: pages
+  cancel-in-progress: true
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.dep.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - run: npm install && npm run setup
+      - name: Assemble site (no model weights are published)
+        run: |
+          mkdir -p site/classify site/detect
+          cp studio/landing.html site/index.html
+          cp studio/index.html studio/tf.min.js studio/jszip.min.js site/classify/
+          cp -r studio/template site/classify/template
+          rm -rf site/classify/template/base
+          cp studio/label.html studio/jszip.min.js site/detect/
+          find site -name '*.bin' -o -name 'model.json' | grep -v template/files.json || true
+      - name: Fail if weights slipped in
+        run: |
+          if find site -name '*.bin' -o -name 'model.json' -o -name '*.onnx' | grep .; then exit 1; fi
+      - uses: actions/upload-pages-artifact@v3
+        with: { path: site }
+      - id: dep
+        uses: actions/deploy-pages@v4
