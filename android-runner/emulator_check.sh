@@ -18,5 +18,7 @@ adb logcat -d | grep -E 'MKAI_|Capacitor/Console' | tail -40 > mkai_log.txt
 { echo '--- console lines'; grep -h 'MKAI_' mkai_log.txt | sed 's/^.*Console: //' ; } >> $E
 adb shell input keyevent KEYCODE_HOME; sleep 2; adb exec-out screencap -p > emu-home.png || true
 cat $E >> "${GITHUB_STEP_SUMMARY:-/dev/null}"
+# Make screenshots readable without downloading artifacts: base64 in a collapsed summary block
+for f in emu-shot.png emu-home.png; do [ -s $f ] && { echo "<details><summary>$f base64</summary><pre>"; base64 -w0 $f; echo "</pre></details>"; } >> "${GITHUB_STEP_SUMMARY:-/dev/null}"; done
 grep -q 'MKAI_NATIVE_OK' mkai_log.txt && echo 'EMULATOR CHECK PASSED' && exit 0
 echo 'EMULATOR CHECK FAILED'; exit 1
