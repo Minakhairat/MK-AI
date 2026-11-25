@@ -75,12 +75,18 @@ if (-not (Test-Path "$py\python.exe")) {
   $whl = "$py\pip-26.3-py3-none-any.whl"
   Invoke-WebRequest 'https://files.pythonhosted.org/packages/07/25/ee8c38ae72d66b844ce8eb9711ba905dba21ca1a8a0c960057c41cd23337/pip-26.3-py3-none-any.whl' -OutFile $whl
   if ((Sha256 $whl) -ne 'f3b60b20ffaadd4415ed7957212a38ac63fa4c5fa375bd0f4a797777940fad13') { throw 'pip download SHA-256 mismatch' }
-  & "$py\python.exe" "$whl\pip" install --no-index --no-warn-script-location $whl
-  if ($LASTEXITCODE -ne 0) { throw 'pip setup failed' }
+  # a wheel is a zip: unpack pip straight into site-packages (pip refuses to install itself from a wheel run as a script)
+  [IO.Compression.ZipFile]::ExtractToDirectory($whl, "$py\Lib\site-packages")
   Remove-Item $whl
 }
 $env:PYTHONNOUSERSITE = '1'
-if ($env:MKAI_SMOKE -eq '1') { & "$py\python.exe" -m pip --version; if ($LASTEXITCODE -ne 0) { throw 'pip not usable' }; Say 'SMOKE OK (python + pip only; PyTorch and model downloads skipped)'; exit 0 }
+if ($env:MKAI_SMOKE -eq '1') {
+  & "$py\python.exe" -m pip --version; if ($LASTEXITCODE -ne 0) { throw 'pip not usable' }
+  & "$py\python.exe" -m pip install --no-warn-script-location --index-url https://download.pytorch.org/whl/cpu --extra-index-url https://pypi.org/simple huggingface_hub; if ($LASTEXITCODE -ne 0) { throw 'smoke pip install failed' }
+  $env:HF_HUB_CACHE = "$root\hf"
+  & "$py\python.exe" -c "from huggingface_hub import hf_hub_download as d; print(d('PekingU/rtdetr_r18vd','config.json',revision='ac77a11ff0170a41b771c03264987f8ce2b0d753'))"; if ($LASTEXITCODE -ne 0) { throw 'smoke model fetch failed' }
+  Say 'SMOKE OK (python, pip, a library install and a pinned-model file fetch; PyTorch and full model skipped)'; exit 0
+}
 # 3) Libraries from PyTorch.org and PyPI (versions pinned in constraints.txt, the set proven by our Windows CI)
 if ($needPy) {
   Say 'Downloading PyTorch (CPU) and libraries. This takes a while, once.'
