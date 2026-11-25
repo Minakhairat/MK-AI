@@ -9,7 +9,8 @@ hook='''<script>
  try{var c=document.createElement('canvas');c.width=c.height=320;var g=c.getContext('2d');g.fillStyle='#fff';g.fillRect(0,0,320,320);g.fillStyle='#d00';g.fillRect(80,80,100,100);
   var im=new Image();await new Promise(function(r){im.onload=r;im.src=c.toDataURL();});
   var r=await window.detect(im);
-  console.log('MKAI_NATIVE_OK secure='+window.isSecureContext+' origin='+location.origin+' cam='+(!!(navigator.mediaDevices&&navigator.mediaDevices.getUserMedia))+' detections='+r.length);
+  var cam='cam=none';try{var st=await navigator.mediaDevices.getUserMedia({video:true,audio:false});var v=document.createElement('video');v.srcObject=st;v.muted=true;v.setAttribute('playsinline','');await v.play();await new Promise(function(r){setTimeout(r,1500);});cam='cam_stream='+v.videoWidth+'x'+v.videoHeight;st.getTracks().forEach(function(t){t.stop();});}catch(e){cam='cam_error='+(e&&e.name?e.name:e);}
+  console.log('MKAI_NATIVE_OK '+cam+' secure='+window.isSecureContext+' origin='+location.origin+' cam='+(!!(navigator.mediaDevices&&navigator.mediaDevices.getUserMedia))+' detections='+r.length);
  }catch(e){console.log('MKAI_NATIVE_FAIL '+e);}
 },1000);})();
 </script></body>'''
